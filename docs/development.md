@@ -42,6 +42,9 @@ identitas, dan kredensial pengguna.
 
 CI (`.github/workflows/test.yml`) menjalankan `npm ci`, `npm run format:check`, dan
 `npm test` pada Node 22 dan 24 untuk setiap push ke `main` dan pull request.
+Job container membangun image AMD64 dan ARM64 secara terpisah (ARM64 melalui
+QEMU), lalu menjalankan bantuan CLI, bantuan syncgit, serta pemeriksaan Git,
+SSH, dan user non-root. CI ini tidak memublikasikan image.
 
 Susunan test:
 
@@ -61,5 +64,60 @@ npm start -- --help
 
 Prompt interaktif perlu diverifikasi di terminal nyata. Pengujian noninteraktif
 harus memakai opsi eksplisit tanpa memerlukan input terminal.
+
+## Rilis
+
+Rilis dipicu oleh push tag `vX.Y.Z` pada commit sumber, bukan perubahan versi
+di branch `main`. Dari working tree bersih setelah perubahan siap dirilis:
+
+```bash
+npm version patch            # atau minor / major; mengubah package.json + lock, membuat commit dan tag
+git push origin main         # setelah mendapat persetujuan untuk push
+git push origin "v$(node -p 'require("./package.json").version')"
+```
+
+Workflow `release` (`.github/workflows/release.yml`) checkout `${{ github.sha }}`
+pada event tag, memastikan nama tag sama dengan `v<package.json version>`,
+lalu menjalankan `format:check` dan `npm test`. Jika verifikasi gagal, image
+tidak dipublikasikan. Push branch saja tidak menerbitkan rilis.
+
+Job `image` checkout SHA event yang sama dan memublikasikan manifest
+multi-arsitektur (`linux/amd64`, `linux/arm64`) ke `ghcr.io/m-fadil/dev-tools`
+memakai `GITHUB_TOKEN` dengan izin `packages: write`. Metadata image berasal
+dari tag: misalnya `v0.1.1` menghasilkan `0.1.1`, `0.1`, `0`, serta `latest`
+untuk rilis stabil. Prerelease tidak memperbarui `latest`.
+Build menyertakan provenance dan SBOM, dengan attestation di penyimpanan GitHub.
+Visibilitas package GHCR diatur di GitHub; ubah menjadi public bila image harus
+bisa ditarik tanpa login.
+
+Eksekusi manual hanya berjalan bila ref yang dipilih berupa tag versi; branch
+dilewati. Untuk retry setelah publikasi gagal, rerun workflow tag tersebut.
+Jangan memindahkan atau force-push tag rilis. SHA event mengunci sumber tiap
+run, tetapi tidak membuat tag registry immutable atau build bit-for-bit:
+base image dan paket OS masih bisa berubah saat build ulang.
+
+Branch distribusi `release` tidak lagi diterbitkan, dan CI tidak membuat commit
+atau tag Git. Tag lama tidak diubah. Untuk rilis Docker pertama, naikkan versi
+di sumber baru; jangan memakai ulang `v0.1.0` yang menunjuk distribusi lama.
+
+Instalasi dari Git menjalankan `prepare` (`npm run build`) sebelum npm
+mengemas `dist/src`. Untuk instalasi global, gunakan `npm pack` dari tag
+lalu instal tarball; ini menghindari kegagalan persiapan Git global pada npm 11.19.
+Docker memasang dependency dengan `--ignore-scripts`, membangun TypeScript
+secara eksplisit di stage build, dan menyalin hasilnya ke stage runtime.
+
+Verifikasi attestation:
+
+```bash
+gh attestation verify --owner m-fadil oci://ghcr.io/m-fadil/dev-tools:0.1.1
+```
+
+Pasang atau jalankan hasil rilis:
+
+```bash
+npx 'm-fadil/dev-tools#semver:*'
+npm pack m-fadil/dev-tools#v0.1.1
+npm install -g ./m-fadil-dev-tools-0.1.1.tgz
+```
 
 [Kembali ke dokumentasi](README.md).

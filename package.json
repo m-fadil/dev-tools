@@ -4,6 +4,7 @@
   "private": true,
   "description": "Modular developer CLI for repository maintenance",
   "type": "module",
+  "repository": "github:m-fadil/dev-tools",
   "bin": {
     "dt": "dist/src/cli.js"
   },
