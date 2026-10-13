@@ -9,6 +9,8 @@ import { copyGit, type CopyGitOptions } from '../src/tools/copygit/sync.js';
 const D1 = '2026-01-01T10:00:00+00:00';
 const D2 = '2026-01-02T10:00:00+00:00';
 const D3 = '2026-01-03T10:00:00+00:00';
+/** git `--date=raw` form of the UTC fixture dates above. */
+const raw = (date: string): string => `${Date.parse(date) / 1000} +0000`;
 
 function identity(date: string, committerDate = date): NodeJS.ProcessEnv {
     return {
@@ -103,10 +105,11 @@ describe('copyGit integration', { concurrency: false }, () => {
         const f = fixture(t);
         const upstream = commit(f.source, 'feat: x\n\nbody with ünicode', '1\n', D2, D3);
         await f.sync();
-        const format = '%an <%ae>|%aI|%cn <%ce>|%cI|%B';
+        // raw dates (epoch + offset): iso-strict prints UTC as `Z` or `+00:00` depending on the git version.
+        const format = '%an <%ae>|%ad|%cn <%ce>|%cd|%B';
         assert.equal(
-            git(f.work, ['log', '-1', `--format=${format}`, 'develop']),
-            `Dev <developer@destination.example>|${D2}|Dev <developer@destination.example>|${D3}|feat: x\n\nbody with ünicode`,
+            git(f.work, ['log', '-1', '--date=raw', `--format=${format}`, 'develop']),
+            `Dev <developer@destination.example>|${raw(D2)}|Dev <developer@destination.example>|${raw(D3)}|feat: x\n\nbody with ünicode`,
         );
         assert.equal(git(f.work, ['rev-parse', 'develop^{tree}']), git(f.source, ['rev-parse', `${upstream}^{tree}`]));
         assert.notEqual(git(f.work, ['rev-parse', 'develop']), upstream);
@@ -200,9 +203,9 @@ describe('copyGit integration', { concurrency: false }, () => {
             git(f.work, [
                 'for-each-ref',
                 'refs/tags/v1',
-                '--format=%(taggername)|%(taggeremail)|%(taggerdate:iso-strict)|%(contents)',
+                '--format=%(taggername)|%(taggeremail)|%(taggerdate:raw)|%(contents)',
             ]),
-            `Dev|<developer@destination.example>|${D3}|release one\n\nnotes`,
+            `Dev|<developer@destination.example>|${raw(D3)}|release one\n\nnotes`,
         );
         const before = refs(f.work);
         await f.sync();
