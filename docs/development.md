@@ -11,7 +11,7 @@ src/
     index.ts             Registry command
     <nama>/
       index.ts           Opsi dan prompt
-      <logika>.ts        Logika operasi (mis. copygit/sync.ts)
+      <logika>.ts        Logika operasi (mis. syncgit/sync.ts)
 ```
 
 Setiap command mengelola opsi, prompt, dan implementasinya sendiri. Registry

@@ -33,15 +33,15 @@ const git = (cwd: string, ...args: string[]) => {
 };
 
 describe('cli', () => {
-    test('top-level and copygit --help succeed and list the registered command', () => {
+    test('top-level and syncgit --help succeed and list the registered command', () => {
         const top = cli(['--help']);
         assert.equal(top.code, 0);
         assert.match(top.out, /^dt <tool> \[options\]/);
-        assert.match(top.out, /^ {2}copygit {6}\S/m);
+        assert.match(top.out, /^ {2}syncgit {6}\S/m);
 
-        const tool = cli(['copygit', '--help']);
+        const tool = cli(['syncgit', '--help']);
         assert.equal(tool.code, 0);
-        assert.match(tool.out, /^dt copygit \[options\] \[branch \.\.\.\]/);
+        assert.match(tool.out, /^dt syncgit \[options\] \[branch \.\.\.\]/);
     });
 
     test('unknown command and bad option exit 2 with a usage hint', () => {
@@ -49,7 +49,7 @@ describe('cli', () => {
         assert.equal(unknown.code, 2);
         assert.match(unknown.err, /Tool tidak dikenal: nope\n\nGunakan dt --help/);
 
-        const bad = cli(['copygit', '--nope']);
+        const bad = cli(['syncgit', '--nope']);
         assert.equal(bad.code, 2);
         assert.match(bad.err, /Unknown option '--nope'/);
     });
@@ -59,14 +59,14 @@ describe('cli', () => {
         assert.equal(menu.code, 1);
         assert.match(menu.err, /Menu memerlukan terminal/);
 
-        const wizard = cli(['copygit', '--interactive']);
+        const wizard = cli(['syncgit', '--interactive']);
         assert.equal(wizard.code, 1);
         assert.match(wizard.err, /Wizard memerlukan terminal/);
     });
 
     test('identical source and destination with --push is a usage error, rejected before touching Git', () => {
         const r = cli([
-            'copygit',
+            'syncgit',
             '--repo',
             join(dir, 'absent'),
             '--source',
@@ -82,7 +82,7 @@ describe('cli', () => {
     test('missing mailmap is reported with its resolved path', () => {
         const repo = join(dir, 'no-mailmap');
         git(dir, 'init', '-q', repo);
-        const r = cli(['copygit', '--repo', repo, '-n']);
+        const r = cli(['syncgit', '--repo', repo, '-n']);
         assert.equal(r.code, 1);
         assert.match(r.err, new RegExp(`mailmap tidak ada: ${repo}/mailmap\\.txt`));
     });
@@ -100,13 +100,13 @@ describe('cli', () => {
         git(source, 'commit', '-qam', 'feature');
         const before = git(work, 'rev-parse', 'main');
 
-        const r = cli(['copygit', '--repo', work, '--destination', 'gitlab', '-n', 'main']);
+        const r = cli(['syncgit', '--repo', work, '--destination', 'gitlab', '-n', 'main']);
         assert.equal(r.code, 0, r.err);
         assert.match(r.out, /== main\n {3}titik sinkron: \w+; commit baru:\n {5}\w+ feature\n/);
         assert.equal(git(work, 'rev-parse', 'main'), before);
 
         // Without --push the destination is unused, so it may equal the source.
-        const same = cli(['copygit', '--repo', work, '--source', 'github', '--destination', 'github', '-n', 'main']);
+        const same = cli(['syncgit', '--repo', work, '--source', 'github', '--destination', 'github', '-n', 'main']);
         assert.equal(same.code, 0, same.err);
     });
 
@@ -123,7 +123,7 @@ describe('cli', () => {
             writeFileSync(join(source, 'f.txt'), '1\n');
             git(source, 'commit', '-qam', 'feature');
 
-            const r = cli(['copygit', '--repo', work, '--destination', 'gitlab', '-n']);
+            const r = cli(['syncgit', '--repo', work, '--destination', 'gitlab', '-n']);
             assert.equal(r.code, 0, r.err);
             assert.match(r.out, new RegExp(`>> branch default github: ${branch}\n`), branch);
             assert.match(r.out, new RegExp(`== ${branch}\n {3}titik sinkron: \\w+; commit baru:\n {5}\\w+ feature\n`));

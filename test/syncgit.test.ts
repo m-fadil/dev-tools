@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, test, type TestContext } from 'node:test';
-import { copyGit, type CopyGitOptions } from '../src/tools/copygit/sync.js';
+import { syncGit, type SyncGitOptions } from '../src/tools/syncgit/sync.js';
 
 const D1 = '2026-01-01T10:00:00+00:00';
 const D2 = '2026-01-02T10:00:00+00:00';
@@ -47,7 +47,7 @@ function refs(repo: string): string {
 }
 
 function fixture(t: TestContext) {
-    const root = mkdtempSync(join(tmpdir(), 'copygit-test-'));
+    const root = mkdtempSync(join(tmpdir(), 'syncgit-test-'));
     // HOME/XDG too: user-level ~/.config/git files (attributes, ignore) must not leak into fixtures.
     const isolated = /^(GIT_|HOME$|XDG_CONFIG_HOME$)/;
     const previous = new Map(Object.entries(process.env).filter(([key]) => isolated.test(key)));
@@ -79,7 +79,7 @@ function fixture(t: TestContext) {
     git(work, ['remote', 'add', 'origin', destination]);
     const mailmap = join(root, 'mailmap.txt');
     writeFileSync(mailmap, 'Dev <developer@destination.example> <developer@source.example>\n');
-    const options: CopyGitOptions = {
+    const options: SyncGitOptions = {
         repo: work,
         source: 'github',
         destination: 'origin',
@@ -94,13 +94,13 @@ function fixture(t: TestContext) {
         work,
         destination,
         initial,
-        sync: (overrides: Partial<CopyGitOptions> = {}) => copyGit({ ...options, ...overrides }),
+        sync: (overrides: Partial<SyncGitOptions> = {}) => syncGit({ ...options, ...overrides }),
     };
 }
 
-// Fixtures temporarily isolate process-level Git configuration used by copyGit.
+// Fixtures temporarily isolate process-level Git configuration used by syncGit.
 // Keep them sequential even when the runner's concurrency setting changes.
-describe('copyGit integration', { concurrency: false }, () => {
+describe('syncGit integration', { concurrency: false }, () => {
     test('maps author and committer while preserving dates, full message and tree', async (t) => {
         const f = fixture(t);
         const upstream = commit(f.source, 'feat: x\n\nbody with ünicode', '1\n', D2, D3);

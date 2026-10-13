@@ -23,7 +23,7 @@ async function main(args: string[]): Promise<void> {
     if (!name) {
         if (!process.stdin.isTTY || !process.stdout.isTTY) {
             help();
-            throw new Error('Menu memerlukan terminal. Gunakan dt copygit --repo <path> [options].');
+            throw new Error('Menu memerlukan terminal. Gunakan dt syncgit --repo <path> [options].');
         }
         name = await select({
             message: 'Pilih developer tool',

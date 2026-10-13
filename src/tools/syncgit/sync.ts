@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 
-export interface CopyGitOptions {
+export interface SyncGitOptions {
     repo: string;
     source: string;
     destination: string;
@@ -271,7 +271,7 @@ export async function sourceDefaultBranch(repo: string, source: string): Promise
     return branch;
 }
 
-export async function copyGit(options: CopyGitOptions): Promise<void> {
+export async function syncGit(options: SyncGitOptions): Promise<void> {
     const repo = resolve(options.repo);
     const mailmap = isAbsolute(options.mailmap) ? options.mailmap : resolve(repo, options.mailmap);
     if (!(await stat(mailmap).catch(() => undefined))?.isFile()) throw new Error(`mailmap tidak ada: ${mailmap}`);
@@ -281,7 +281,7 @@ export async function copyGit(options: CopyGitOptions): Promise<void> {
         throw new Error(`Remote sumber tidak ada/tidak valid: ${options.source}`);
     if (options.push && (!remotes.includes(options.destination) || options.destination.startsWith('-')))
         throw new Error(`Remote tujuan tidak ada/tidak valid: ${options.destination}`);
-    const namespace = `refs/copygit-tags/${options.source}`;
+    const namespace = `refs/syncgit-tags/${options.source}`;
     await git.run(['check-ref-format', `${namespace}/check`]);
     const branches = options.branches.length
         ? [...new Set(options.branches)]
@@ -441,7 +441,7 @@ export async function copyGit(options: CopyGitOptions): Promise<void> {
                                     .map(([name, value]) => `${name}=${shellQuote(value ?? '')}`)
                                     .join(' ');
                                 throw new Error(
-                                    `KONFLIK di ${commit.hash} pada ${branch}. Working tree dibiarkan untuk pemulihan manual. Selesaikan konflik, jalankan git add, lalu:\n${environment} git -c commit.gpgSign=false commit --no-gpg-sign --allow-empty --cleanup=verbatim -C ${commit.hash} --reset-author\nJalankan ulang copygit setelah commit selesai.`,
+                                    `KONFLIK di ${commit.hash} pada ${branch}. Working tree dibiarkan untuk pemulihan manual. Selesaikan konflik, jalankan git add, lalu:\n${environment} git -c commit.gpgSign=false commit --no-gpg-sign --allow-empty --cleanup=verbatim -C ${commit.hash} --reset-author\nJalankan ulang syncgit setelah commit selesai.`,
                                     { cause: error },
                                 );
                             }

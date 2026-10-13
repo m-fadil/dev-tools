@@ -5,12 +5,12 @@ import { resolve } from 'node:path';
 import { parseArgs, promisify } from 'node:util';
 import { UsageError } from '../../errors.js';
 import type { Tool } from '../../tool.js';
-import { copyGit, sourceDefaultBranch, type CopyGitOptions } from './sync.js';
+import { syncGit, sourceDefaultBranch, type SyncGitOptions } from './sync.js';
 
 const exec = promisify(execFile);
 
 function help(): void {
-    console.log(`dt copygit [options] [branch ...]
+    console.log(`dt syncgit [options] [branch ...]
 
 Tanpa opsi: wizard Inquirer. Dengan opsi: langsung berjalan, cocok untuk CI.
   --repo <path>           Repo kerja (default: direktori saat ini)
@@ -27,7 +27,7 @@ Tanpa opsi: wizard Inquirer. Dengan opsi: langsung berjalan, cocok untuk CI.
 Tanpa branch: memakai branch default remote sumber (HEAD, mis. main/master).
 Tag lama yang dipindah diperbarui dengan lease; branch tidak pernah force-push.
 Exit: 0 sukses, 1 gagal, 2 penggunaan salah, 130 dibatalkan.
-Contoh: dt copygit --repo /path/to/repo -n main`);
+Contoh: dt syncgit --repo /path/to/repo -n main`);
 }
 
 async function gitLines(repo: string, ...args: string[]): Promise<string[]> {
@@ -35,7 +35,7 @@ async function gitLines(repo: string, ...args: string[]): Promise<string[]> {
     return stdout.trim().split('\n').filter(Boolean);
 }
 
-async function wizard(initial: CopyGitOptions): Promise<CopyGitOptions | undefined> {
+async function wizard(initial: SyncGitOptions): Promise<SyncGitOptions | undefined> {
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
         throw new Error('Wizard memerlukan terminal. Gunakan --repo <path> dan flag tanpa --interactive.');
     }
@@ -132,18 +132,18 @@ async function wizard(initial: CopyGitOptions): Promise<CopyGitOptions | undefin
     };
 }
 
-export interface CopyGitArgs {
+export interface SyncGitArgs {
     help: boolean;
     interactive: boolean;
-    options: CopyGitOptions;
+    options: SyncGitOptions;
 }
 
 // Pure parsing seam: resolves defaults without touching Git, prompts, or the terminal.
-export function parseCopyGitArgs(
+export function parseSyncGitArgs(
     args: string[],
     cwd = process.cwd(),
     env: NodeJS.ProcessEnv = process.env,
-): CopyGitArgs {
+): SyncGitArgs {
     try {
         const { values, positionals } = parseArgs({
             args,
@@ -168,9 +168,9 @@ export function parseCopyGitArgs(
                 repo,
                 source: values.source ?? 'github',
                 destination: values.destination ?? (env.PUSH_REMOTE || 'origin'),
-                // Kept relative: copyGit resolves it against the repo, which the wizard may still change.
+                // Kept relative: syncGit resolves it against the repo, which the wizard may still change.
                 mailmap: values.mailmap ?? 'mailmap.txt',
-                // Empty means the source remote's default branch, resolved by copyGit.
+                // Empty means the source remote's default branch, resolved by syncGit.
                 branches: [...new Set(positionals)],
                 dryRun: values['dry-run'] ?? false,
                 push: values.push ?? false,
@@ -186,7 +186,7 @@ export function parseCopyGitArgs(
 }
 
 async function run(args: string[]): Promise<void> {
-    const parsed = parseCopyGitArgs(args);
+    const parsed = parseSyncGitArgs(args);
     if (parsed.help) {
         help();
         return;
@@ -195,13 +195,13 @@ async function run(args: string[]): Promise<void> {
     if (!options) return;
     // Only pushing writes to the destination; without --push it is unused and may equal the source.
     if (options.push && options.source === options.destination) {
-        throw new UsageError('Remote sumber dan tujuan harus berbeda untuk --push: copygit tidak menulis ke sumber.');
+        throw new UsageError('Remote sumber dan tujuan harus berbeda untuk --push: syncgit tidak menulis ke sumber.');
     }
-    await copyGit(options);
+    await syncGit(options);
 }
 
-export const copygit: Tool = {
-    name: 'copygit',
+export const syncgit: Tool = {
+    name: 'syncgit',
     description: 'Sinkron commit dan tag antar remote Git dengan pemetaan mailmap',
     run,
 };

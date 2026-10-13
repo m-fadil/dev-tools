@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { UsageError } from '../src/errors.js';
-import { parseCopyGitArgs } from '../src/tools/copygit/index.js';
+import { parseSyncGitArgs } from '../src/tools/syncgit/index.js';
 
 const cwd = '/work/current';
-const parse = (args: string[], env: NodeJS.ProcessEnv = {}) => parseCopyGitArgs(args, cwd, env);
+const parse = (args: string[], env: NodeJS.ProcessEnv = {}) => parseSyncGitArgs(args, cwd, env);
 
-describe('copygit argument parsing', () => {
+describe('syncgit argument parsing', () => {
     test('defaults resolve against the current directory and never enable writes', () => {
         assert.deepEqual(parse(['-n']).options, {
             repo: cwd,
@@ -20,7 +20,7 @@ describe('copygit argument parsing', () => {
         });
     });
 
-    test('relative repo resolves from cwd; mailmap stays as given for copyGit to resolve against the repo', () => {
+    test('relative repo resolves from cwd; mailmap stays as given for syncGit to resolve against the repo', () => {
         assert.equal(parse(['--repo', '../other']).options.repo, '/work/other');
         assert.equal(parse(['--repo=../other']).options.repo, '/work/other');
         assert.equal(parse(['--repo', '../other', '--mailmap', 'ids/map.txt']).options.mailmap, 'ids/map.txt');

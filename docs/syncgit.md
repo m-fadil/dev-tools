@@ -1,4 +1,4 @@
-# copygit
+# syncgit
 
 Sinkronisasi satu arah commit dan tag antar remote Git, dengan pemetaan identitas
 melalui mailmap. Memerlukan Git serta akses SSH/HTTPS ke remote yang digunakan.
@@ -11,7 +11,7 @@ Tidak bergantung pada API provider, Python, atau script shell.
 dt
 
 # Buka wizard langsung
-dt copygit
+dt syncgit
 ```
 
 Wizard meminta repo, remote sumber/tujuan, mailmap, dan branch lokal. Mode default
@@ -23,7 +23,7 @@ dilaporkan dan tidak ikut dipilih. Mailmap relatif dibaca dari repo yang dipilih
 Gunakan `--interactive` untuk wizard dengan nilai awal dari flag:
 
 ```bash
-dt copygit --interactive --repo /path/to/repo
+dt syncgit --interactive --repo /path/to/repo
 ```
 
 ## Command langsung / CI
@@ -32,20 +32,20 @@ Memberikan flag atau branch menjalankan command tanpa prompt.
 
 ```bash
 # Preview; tidak mengubah commit/tag lokal atau remote tujuan
-dt copygit --repo /path/to/repo -n
+dt syncgit --repo /path/to/repo -n
 
 # Sinkron lokal
-dt copygit --repo /path/to/repo
+dt syncgit --repo /path/to/repo
 
 # Sinkron lokal lalu push
-dt copygit --repo /path/to/repo -p
+dt syncgit --repo /path/to/repo -p
 
 # Repo/provider lain
-dt copygit --repo /path/to/work --source upstream --destination origin \
+dt syncgit --repo /path/to/work --source upstream --destination origin \
   --mailmap identities.txt -n main
 
 # Bantuan lengkap
-dt copygit --help
+dt syncgit --help
 ```
 
 ## Opsi
@@ -103,7 +103,7 @@ dikirim ke remote tujuan memakai identitas terpetakan; sumber tidak di-push.
   Merge commit yang memerlukan mainline tidak otomatis diimpor.
 - Konfigurasi mailmap repo tidak diubah. Signing otomatis dinonaktifkan karena
   objek hasil transformasi berbeda dari sumber.
-- Tag sumber ditaruh di `refs/copygit-tags/<source>/`, bukan `refs/tags/`.
+- Tag sumber ditaruh di `refs/syncgit-tags/<source>/`, bukan `refs/tags/`.
   Tag dipetakan memakai tree + author date + subject. Kandidat ambigu/tidak ada
   padanan dilaporkan dan dilewati; exit sukses tidak berarti semua tag tersalin.
 - Tag ringan tetap ringan; anotasi membawa pesan, tagger terpetakan dan tanggal.

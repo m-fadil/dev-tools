@@ -2,7 +2,7 @@
 
 ## Penggunaan
 
-- [copygit](copygit.md) — sinkronisasi commit dan tag antar remote Git dengan pemetaan identitas.
+- [syncgit](syncgit.md) — sinkronisasi commit dan tag antar remote Git dengan pemetaan identitas.
 
 ## Pengembangan
 
