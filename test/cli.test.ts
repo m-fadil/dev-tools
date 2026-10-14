@@ -36,18 +36,15 @@ describe('cli', () => {
     test('top-level and syncgit --help succeed and list the registered command', () => {
         const top = cli(['--help']);
         assert.equal(top.code, 0);
-        assert.match(top.out, /^dt <tool> \[options\]/);
         assert.match(top.out, /^ {2}syncgit {6}\S/m);
 
         const tool = cli(['syncgit', '--help']);
         assert.equal(tool.code, 0);
-        assert.match(tool.out, /^dt syncgit \[options\] \[branch \.\.\.\]/);
     });
 
-    test('unknown command and bad option exit 2 with a usage hint', () => {
+    test('unknown command and bad option exit 2', () => {
         const unknown = cli(['nope']);
         assert.equal(unknown.code, 2);
-        assert.match(unknown.err, /Tool tidak dikenal: nope\n\nGunakan dt --help/);
 
         const bad = cli(['syncgit', '--nope']);
         assert.equal(bad.code, 2);

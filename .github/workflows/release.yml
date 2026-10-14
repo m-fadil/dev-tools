@@ -39,6 +39,67 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run format:check
       - run: npm test
+      - name: prepare prebuilt npm distribution
+        env:
+          DIST_DIR: ${{ runner.temp }}/distribution
+        run: node scripts/prepare-release.mjs "$DIST_DIR"
+      - name: smoke install prebuilt package
+        working-directory: ${{ runner.temp }}/distribution
+        env:
+          INSTALL_PREFIX: ${{ runner.temp }}/npm-install
+        run: |
+          PACKAGE=$(npm pack --pack-destination "$RUNNER_TEMP")
+          npm install --global --prefix "$INSTALL_PREFIX" "$RUNNER_TEMP/$PACKAGE"
+          "$INSTALL_PREFIX/bin/dt" --help
+          test "$("$INSTALL_PREFIX/bin/dt" hash abc)" = \
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-distribution
+          path: ${{ runner.temp }}/distribution
+          if-no-files-found: error
+
+  distribution:
+    name: publish prebuilt release branch
+    needs: verify
+    # Keep the install branch on stable releases; prereleases remain source tags.
+    if: github.ref_type == 'tag' && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-distribution
+          path: ${{ runner.temp }}/distribution
+      - name: publish distribution without changing source tags
+        env:
+          DIST_DIR: ${{ runner.temp }}/distribution
+          RELEASE_REPO: ${{ runner.temp }}/release-repo
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          if git show-ref --verify --quiet refs/remotes/origin/release; then
+            git worktree add --detach "$RELEASE_REPO" origin/release
+          else
+            git worktree add --detach "$RELEASE_REPO" HEAD
+            git -C "$RELEASE_REPO" checkout --orphan release
+          fi
+          git -C "$RELEASE_REPO" rm -rf --ignore-unmatch .
+          cp -R "$DIST_DIR"/. "$RELEASE_REPO"/
+          git -C "$RELEASE_REPO" add .
+          if git -C "$RELEASE_REPO" diff --cached --quiet; then
+            echo "Distribution is already current."
+            exit 0
+          fi
+          git -C "$RELEASE_REPO" -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "release $RELEASE_TAG" -m "source: $SOURCE_SHA"
+          git -C "$RELEASE_REPO" push origin HEAD:refs/heads/release
 
   image:
     name: publish multi-architecture image

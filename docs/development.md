@@ -57,7 +57,8 @@ Susunan test:
   tanpa Git atau prompt).
 - `test/<nama>.test.ts` — integration test perilaku command terhadap repo sementara.
 
-Command yang dipasang melalui `npm link` memakai hasil build di `dist/src/`.
+Command `dt` dari package `@m-fadil/dev-tools` yang dipasang melalui `npm link`
+memakai hasil build di `dist/src/`.
 Tidak perlu melakukan link ulang setelah perubahan kode; cukup build ulang.
 Untuk menjalankan tanpa global link:
 
@@ -81,8 +82,8 @@ git push origin "v$(node -p 'require("./package.json").version')"
 
 Workflow `release` (`.github/workflows/release.yml`) checkout `${{ github.sha }}`
 pada event tag, memastikan nama tag sama dengan `v<package.json version>`,
-lalu menjalankan `format:check` dan `npm test`. Jika verifikasi gagal, image
-tidak dipublikasikan. Push branch saja tidak menerbitkan rilis.
+lalu menjalankan `format:check` dan `npm test`. Jika verifikasi gagal, distribusi
+dan image tidak dipublikasikan. Push branch saja tidak menerbitkan rilis.
 
 Job `image` checkout SHA event yang sama dan memublikasikan manifest
 multi-arsitektur (`linux/amd64`, `linux/arm64`) ke `ghcr.io/m-fadil/dev-tools`
@@ -99,13 +100,18 @@ Jangan memindahkan atau force-push tag rilis. SHA event mengunci sumber tiap
 run, tetapi tidak membuat tag registry immutable atau build bit-for-bit:
 base image dan paket OS masih bisa berubah saat build ulang.
 
-Branch distribusi `release` tidak lagi diterbitkan, dan CI tidak membuat commit
-atau tag Git. Tag lama tidak diubah. Untuk rilis Docker pertama, naikkan versi
-di sumber baru; jangan memakai ulang `v0.1.0` yang menunjuk distribusi lama.
+Setelah verifikasi, `scripts/prepare-release.mjs` menyalin `dist/src`, README,
+dokumentasi, dan metadata npm ke artifact distribusi. Package distribusi tidak
+memuat `scripts` atau `devDependencies`, jadi instalasi Git global tidak
+menjalankan `prepare` dan tidak memerlukan compiler.
 
-Instalasi dari Git menjalankan `prepare` (`npm run build`) sebelum npm
-mengemas `dist/src`. Untuk instalasi global, gunakan `npm pack` dari tag
-lalu instal tarball; ini menghindari kegagalan persiapan Git global pada npm 11.19.
+Job `distribution` memakai artifact tersebut untuk memperbarui branch `release`
+pada tag stabil saja. Commit mencatat tag dan SHA sumber, mempertahankan riwayat
+branch, dan memakai push biasa (bukan force-push). Izin `contents: write` hanya
+diberikan ke job ini. Tag sumber tidak diubah atau dibuat ulang. Bila aturan
+proteksi branch melarang push bot, sesuaikan aturan untuk branch distribusi.
+
+Checkout kode sumber tetap memakai `prepare` untuk membangun TypeScript.
 Docker memasang dependency dengan `--ignore-scripts`, membangun TypeScript
 secara eksplisit di stage build, dan menyalin hasilnya ke stage runtime.
 
@@ -115,12 +121,11 @@ Verifikasi attestation:
 gh attestation verify --owner m-fadil oci://ghcr.io/m-fadil/dev-tools:0.1.1
 ```
 
-Pasang atau jalankan hasil rilis:
+Setelah rilis baru memperbarui branch distribusi, instalasi siap pakai:
 
 ```bash
-npx 'm-fadil/dev-tools#semver:*'
-npm pack m-fadil/dev-tools#v0.1.1
-npm install -g ./m-fadil-dev-tools-0.1.1.tgz
+npm install -g github:m-fadil/dev-tools#release
+npx --package=github:m-fadil/dev-tools#release dt --help
 ```
 
 [Kembali ke dokumentasi](README.md).

@@ -15,17 +15,17 @@ const sq = (text: string): string => `'${text.replaceAll("'", `'\\''`)}'`;
 export function completionScript(shell: Shell, entries: readonly CompletionEntry[]): string {
     switch (shell) {
         case 'bash':
-            return `_dev_tool() {
+            return `_dt() {
     local cur="\${COMP_WORDS[COMP_CWORD]}"
     if [ "$COMP_CWORD" -eq 1 ]; then
         COMPREPLY=( $(compgen -W ${sq([...entries.map((e) => e.name), '--help'].join(' '))} -- "$cur") )
     fi
 }
-complete -F _dev_tool ${BIN}
+complete -F _dt ${BIN}
 `;
         case 'zsh':
             return `#compdef ${BIN}
-_dev_tool() {
+_dt() {
     local -a tools
     tools=(
 ${entries.map((e) => `        ${sq(`${e.name}:${e.description.replaceAll(':', '\\:')}`)}`).join('\n')}
@@ -37,9 +37,9 @@ ${entries.map((e) => `        ${sq(`${e.name}:${e.description.replaceAll(':', '\
 # Autoloaded from $fpath as _dt, zsh runs this file on the first Tab: call the completer then.
 # When sourced instead, only register it.
 if [[ $funcstack[1] == _dt ]]; then
-    _dev_tool "$@"
+    _dt "$@"
 else
-    compdef _dev_tool ${BIN}
+    compdef _dt ${BIN}
 fi
 `;
         case 'fish':

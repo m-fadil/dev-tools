@@ -39,4 +39,22 @@ describe('completion', () => {
         assert.equal(cli(['completion', 'powershell']).code, 2);
         assert.equal(cli(['completion']).code, 2);
     });
+
+    test('registers only dt and uses _dt for zsh autoload and sourced completion', () => {
+        const bash = cli(['completion', 'bash']);
+        assert.equal(bash.code, 0, bash.err);
+        assert.match(bash.out, /^_dt\(\) \{/m);
+        assert.match(bash.out, /^complete -F _dt dt$/m);
+
+        const zsh = cli(['completion', 'zsh']);
+        assert.equal(zsh.code, 0, zsh.err);
+        assert.match(zsh.out, /^#compdef dt$/m);
+        assert.match(zsh.out, /^_dt\(\) \{/m);
+        assert.match(zsh.out, /if \[\[ \$funcstack\[1\] == _dt \]\]; then\n {4}_dt "\$@"/);
+        assert.match(zsh.out, /^ {4}compdef _dt dt$/m);
+
+        const fish = cli(['completion', 'fish']);
+        assert.equal(fish.code, 0, fish.err);
+        for (const line of fish.out.trim().split('\n')) assert.match(line, /^complete -c dt /);
+    });
 });

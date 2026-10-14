@@ -1,114 +1,100 @@
 # dev-tools
 
-Utilitas command-line untuk menyederhanakan pekerjaan pengembangan dan maintenance.
-Repo ini menyediakan satu command, `dt`, dengan antarmuka terminal interaktif
-serta opsi eksekusi langsung untuk penggunaan berulang dan otomatisasi.
-
-Implementasi menggunakan TypeScript dan `@inquirer/prompts`. Setiap command
-memiliki tanggung jawab tersendiri, sementara menu, bantuan, dan dispatch dikelola
-melalui registry bersama.
+Kumpulan alat praktis untuk pekerjaan sehari-hari, cukup dengan perintah `dt`.
 
 ## Instalasi
 
-Memerlukan Node.js `^22.13.0 || >=23.5.0` (Node 24 direkomendasikan), npm, dan
-`git` (npm memakai git untuk mengambil ref GitHub). Prasyarat tambahan dijelaskan
-pada panduan masing-masing command.
+Untuk pilihan Node.js, siapkan [Node.js 24](https://nodejs.org/) dan
+[Git](https://git-scm.com/). Untuk pilihan Docker, cukup siapkan Docker.
 
-Jalankan tanpa instalasi:
-
-```bash
-npx 'm-fadil/dev-tools#semver:*'       # menu interaktif, tag stabil terbaru
-npx m-fadil/dev-tools#v0.1.1 syncgit -n # versi tertentu, setelah tag diterbitkan
-```
-
-Atau pasang secara global:
+### Dari Git clone
 
 ```bash
-npm pack m-fadil/dev-tools#v0.1.1      # membangun paket dari tag sumber
-npm install -g ./m-fadil-dev-tools-0.1.1.tgz
-```
-
-Paket global npm biasa: terpasang di prefix npm (`npm prefix -g`) dengan
-`node_modules` sendiri, dan `dt` masuk ke `PATH`. Jalankan ulang perintah
-yang sama untuk memperbarui. Hapus dengan `npm uninstall -g @m-fadil/dev-tools`.
-
-Rilis baru memakai tag `vX.Y.Z` pada commit kode sumber. npm menjalankan `prepare`
-untuk membangun TypeScript sebelum mengemas paket; compiler diambil sebagai
-devDependency saat persiapan, bukan prasyarat global. Jangan memakai `--ignore-scripts`
-untuk instalasi dari Git. Ref `#semver:*` memilih tag stabil terbaru, bukan `main`.
-
-Untuk instalasi global, kemas dahulu dengan `npm pack`, lalu instal tarball.
-Instalasi Git langsung dengan `npm install -g` gagal pada npm 11.19 karena
-persiapan dependency mewarisi mode global. Tarball sudah berisi hasil build.
-Hapus file `.tgz` setelah instalasi bila tidak diperlukan.
-
-Tag lama tetap berlaku; branch distribusi `release` tidak lagi diperbarui.
-
-Bila `npm prefix -g` dimiliki root (Node sistem), awali perintah dengan `sudo`
-atau pindahkan prefix sekali saja:
-
-```bash
-npm config set prefix ~/.npm-global      # lalu tambahkan ~/.npm-global/bin ke PATH
-```
-
-Dari checkout (untuk pengembangan):
-
-```bash
-cd /path/to/dev-tools
+git clone https://github.com/m-fadil/dev-tools.git
+cd dev-tools
 npm ci
-npm run build
 npm link
 ```
 
-## Menjalankan
+### Langsung dengan npx
+
+Tanpa memasang secara global:
 
 ```bash
-# Buka menu interaktif
-dt
+npx --package=github:m-fadil/dev-tools#release dt --help
+npx --package=github:m-fadil/dev-tools#release dt hash "halo"
+```
 
-# Tampilkan bantuan
+### Pasang dengan npm
+
+Pasang versi siap pakai langsung:
+
+```bash
+npm install -g github:m-fadil/dev-tools#release
 dt --help
 ```
 
-Command dapat dijalankan langsung beserta opsinya tanpa melalui menu. Panduan
-penggunaan, contoh, dan batas keselamatan tersedia di [dokumentasi](docs/README.md).
+Untuk memperbarui, jalankan lagi perintah instalasi yang sama. Paket diambil
+dari GitHub; tidak perlu mengemas atau membangunnya sendiri.
 
-## Docker
+### Docker
 
-Image rilis: `ghcr.io/m-fadil/dev-tools`, mendukung `linux/amd64` dan `linux/arm64`.
-Image tersedia setelah workflow release berhasil memublikasikannya.
+Unduh image:
 
 ```bash
+docker pull ghcr.io/m-fadil/dev-tools:latest
+```
+
+Buka menu atau jalankan alat langsung:
+
+```bash
+docker run --rm -it ghcr.io/m-fadil/dev-tools:latest
 docker run --rm ghcr.io/m-fadil/dev-tools:latest --help
-
-# Mount repo dengan UID/GID pemiliknya; -it diperlukan untuk menu/wizard.
-docker run --rm -it --user "$(id -u):$(id -g)" \
-  -v "$PWD:/workspace" ghcr.io/m-fadil/dev-tools:latest
+docker run --rm ghcr.io/m-fadil/dev-tools:latest hash "halo"
+docker run --rm ghcr.io/m-fadil/dev-tools:latest uuid
 ```
 
-Image menyertakan Node 24, Git, OpenSSH client, dan sertifikat CA; default user
-`node` (UID 1000), direktori kerja `/workspace`. Argumen diteruskan ke `dt`.
-Untuk repo yang memerlukan autentikasi, sediakan kredensial HTTPS atau SSH
-agent/config/known_hosts melalui mount terpisah; kredensial host tidak otomatis
-tersedia. Repo dan mailmap harus bisa dibaca/ditulis oleh user container.
-
-Build lokal:
+Untuk membaca file dari folder saat ini:
 
 ```bash
-docker build -t dev-tools:local .
-docker run --rm dev-tools:local syncgit --help
+docker run --rm -v "$PWD:/workspace:ro" \
+  ghcr.io/m-fadil/dev-tools:latest json --file /workspace/data.json
 ```
 
-## Pengembangan
+Untuk mengolah teks melalui pipe:
 
 ```bash
-npm run build
-npm test
-npm run format:check
+printf 'halo' | docker run --rm -i ghcr.io/m-fadil/dev-tools:latest encode
 ```
 
-Build memperbarui command yang terhubung melalui `npm link`. Verifikasi memakai
-TypeScript strict dan integration test dengan lingkungan sementara yang terisolasi.
+Di Docker, tulis nama alat langsung setelah nama image—tidak perlu menambahkan
+`dt`. Gunakan `-it` untuk menu, atau `-i` untuk input dari pipe.
 
-Struktur kode dan panduan maintenance tersedia di
-[panduan pengembangan](docs/development.md).
+## Cara pakai
+
+```bash
+dt                         # buka menu dan cari alat
+dt --help                  # lihat semua alat
+dt hash "halo"             # buat hash
+dt uuid                    # buat ID acak
+dt password                # buat password
+dt json --file data.json   # rapikan JSON
+dt time                    # lihat waktu sekarang
+```
+
+Untuk panduan setiap alat, jalankan `dt <nama> --help`, misalnya `dt encrypt --help`.
+
+## Fitur
+
+- Hash, password, ID acak, dan enkripsi.
+- Encode/decode, JSON, CSV, dan pengolahan teks.
+- Waktu, jadwal, warna, ukuran data, dan perhitungan.
+- Pemeriksaan jaringan, gambar, file, dan sinkronisasi Git.
+
+Contoh lengkap tersedia di [dokumentasi](docs/README.md).
+
+Untuk menghapus instalasi:
+
+```bash
+npm uninstall -g @m-fadil/dev-tools
+```

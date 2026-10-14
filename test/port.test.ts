@@ -57,8 +57,9 @@ describe('port check', () => {
         assert.equal((await cli(['port', 'check', '80', '--timeout', '60001'])).code, 2);
     });
 
-    test('unresolvable host is an error, not "tertutup"', async () => {
-        const r = await cli(['port', 'check', '80', '--host', 'tidak-ada.invalid']);
+    test('malformed hostname is an error, not a closed port', async () => {
+        // Invalid DNS syntax fails locally, without relying on a resolver responding before timeout.
+        const r = await cli(['port', 'check', '80', '--host', '[invalid]']);
         assert.equal(r.code, 1);
         assert.equal(r.out, '');
         assert.notEqual(r.err, '');
