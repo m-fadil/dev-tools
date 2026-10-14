@@ -182,6 +182,7 @@ async function run(args) {
 export const syncgit = {
     name: 'syncgit',
     description: 'Sinkron commit dan tag antar remote Git dengan pemetaan mailmap',
+    category: 'Git',
     run,
 };
 //# sourceMappingURL=index.js.map

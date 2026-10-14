@@ -1,79 +1,100 @@
 # dev-tools
 
-Utilitas command-line untuk menyederhanakan pekerjaan pengembangan dan maintenance.
-Repo ini menyediakan satu command, `dt`, dengan antarmuka terminal interaktif
-serta opsi eksekusi langsung untuk penggunaan berulang dan otomatisasi.
-
-Implementasi menggunakan TypeScript dan `@inquirer/prompts`. Setiap command
-memiliki tanggung jawab tersendiri, sementara menu, bantuan, dan dispatch dikelola
-melalui registry bersama.
+Kumpulan alat praktis untuk pekerjaan sehari-hari, cukup dengan perintah `dt`.
 
 ## Instalasi
 
-Memerlukan Node.js `^22.13.0 || >=23.5.0` (Node 24 direkomendasikan), npm, dan
-`git` (npm memakai git untuk mengambil ref GitHub). Prasyarat tambahan dijelaskan
-pada panduan masing-masing command.
+Untuk pilihan Node.js, siapkan [Node.js 24](https://nodejs.org/) dan
+[Git](https://git-scm.com/). Untuk pilihan Docker, cukup siapkan Docker.
 
-Jalankan tanpa instalasi:
-
-```bash
-npx m-fadil/dev-tools#release            # menu interaktif, rilis terbaru
-npx m-fadil/dev-tools#v0.1.0 syncgit -n  # versi tertentu
-```
-
-Atau pasang secara global:
+### Dari Git clone
 
 ```bash
-npm install -g m-fadil/dev-tools#release   # atau #v0.1.0 untuk mengunci versi
-```
-
-Paket global npm biasa: terpasang di prefix npm (`npm prefix -g`) dengan
-`node_modules` sendiri, dan `dt` masuk ke `PATH`. Jalankan ulang perintah
-yang sama untuk memperbarui. Hapus dengan `npm uninstall -g @m-fadil/dev-tools`.
-
-`release` adalah branch yang hanya berisi hasil build, satu commit per versi,
-masing-masing diberi tag `vX.Y.Z`; tidak ada proses kompilasi di mesin Anda.
-`main` adalah kode sumber dan tidak bisa dipasang langsung.
-
-Bila `npm prefix -g` dimiliki root (Node sistem), awali perintah dengan `sudo`
-atau pindahkan prefix sekali saja:
-
-```bash
-npm config set prefix ~/.npm-global      # lalu tambahkan ~/.npm-global/bin ke PATH
-```
-
-Dari checkout (untuk pengembangan):
-
-```bash
-cd /path/to/dev-tools
+git clone https://github.com/m-fadil/dev-tools.git
+cd dev-tools
 npm ci
-npm run build
 npm link
 ```
 
-## Menjalankan
+### Langsung dengan npx
+
+Tanpa memasang secara global:
 
 ```bash
-# Buka menu interaktif
-dt
+npx --package=github:m-fadil/dev-tools#release dt --help
+npx --package=github:m-fadil/dev-tools#release dt hash "halo"
+```
 
-# Tampilkan bantuan
+### Pasang dengan npm
+
+Pasang versi siap pakai langsung:
+
+```bash
+npm install -g github:m-fadil/dev-tools#release
 dt --help
 ```
 
-Command dapat dijalankan langsung beserta opsinya tanpa melalui menu. Panduan
-penggunaan, contoh, dan batas keselamatan tersedia di [dokumentasi](docs/README.md).
+Untuk memperbarui, jalankan lagi perintah instalasi yang sama. Paket diambil
+dari GitHub; tidak perlu mengemas atau membangunnya sendiri.
 
-## Pengembangan
+### Docker
+
+Unduh image:
 
 ```bash
-npm run build
-npm test
-npm run format:check
+docker pull ghcr.io/m-fadil/dev-tools:latest
 ```
 
-Build memperbarui command yang terhubung melalui `npm link`. Verifikasi memakai
-TypeScript strict dan integration test dengan lingkungan sementara yang terisolasi.
+Buka menu atau jalankan alat langsung:
 
-Struktur kode dan panduan maintenance tersedia di
-[panduan pengembangan](docs/development.md).
+```bash
+docker run --rm -it ghcr.io/m-fadil/dev-tools:latest
+docker run --rm ghcr.io/m-fadil/dev-tools:latest --help
+docker run --rm ghcr.io/m-fadil/dev-tools:latest hash "halo"
+docker run --rm ghcr.io/m-fadil/dev-tools:latest uuid
+```
+
+Untuk membaca file dari folder saat ini:
+
+```bash
+docker run --rm -v "$PWD:/workspace:ro" \
+  ghcr.io/m-fadil/dev-tools:latest json --file /workspace/data.json
+```
+
+Untuk mengolah teks melalui pipe:
+
+```bash
+printf 'halo' | docker run --rm -i ghcr.io/m-fadil/dev-tools:latest encode
+```
+
+Di Docker, tulis nama alat langsung setelah nama image—tidak perlu menambahkan
+`dt`. Gunakan `-it` untuk menu, atau `-i` untuk input dari pipe.
+
+## Cara pakai
+
+```bash
+dt                         # buka menu dan cari alat
+dt --help                  # lihat semua alat
+dt hash "halo"             # buat hash
+dt uuid                    # buat ID acak
+dt password                # buat password
+dt json --file data.json   # rapikan JSON
+dt time                    # lihat waktu sekarang
+```
+
+Untuk panduan setiap alat, jalankan `dt <nama> --help`, misalnya `dt encrypt --help`.
+
+## Fitur
+
+- Hash, password, ID acak, dan enkripsi.
+- Encode/decode, JSON, CSV, dan pengolahan teks.
+- Waktu, jadwal, warna, ukuran data, dan perhitungan.
+- Pemeriksaan jaringan, gambar, file, dan sinkronisasi Git.
+
+Contoh lengkap tersedia di [dokumentasi](docs/README.md).
+
+Untuk menghapus instalasi:
+
+```bash
+npm uninstall -g @m-fadil/dev-tools
+```

@@ -1,0 +1,17 @@
+import { randomBytes, randomInt } from 'node:crypto';
+export const TOKEN_FORMATS = ['hex', 'base64', 'base64url', 'alnum'];
+const ALNUM = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+/** Exactly `length` characters. alnum draws each char uniformly (randomInt rejects modulo bias). */
+export function tokenByLength(format, length) {
+    if (format === 'alnum')
+        return Array.from({ length }, () => ALNUM[randomInt(ALNUM.length)]).join('');
+    // Unpadded alphabets carry 4 (hex) or 6 (base64) bits per char; slice off the surplus.
+    const bitsPerChar = format === 'hex' ? 4 : 6;
+    const bytes = Math.ceil((length * bitsPerChar) / 8);
+    return randomBytes(bytes).toString(format).replace(/=+$/, '').slice(0, length);
+}
+/** Token carrying exactly `bytes` random bytes in the given encoding. */
+export function tokenByBytes(format, bytes) {
+    return randomBytes(bytes).toString(format);
+}
+//# sourceMappingURL=token.js.map

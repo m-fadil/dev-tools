@@ -1,16 +1,30 @@
 #!/usr/bin/env node
-import { select } from '@inquirer/prompts';
+import { search } from '@inquirer/prompts';
 import { UsageError } from './errors.js';
-import { tools } from './tools/index.js';
+import { findTool, tools, toolsByCategory } from './tools/index.js';
+function toolLine(tool) {
+    const alias = tool.aliases?.length ? ` (alias: ${tool.aliases.join(', ')})` : '';
+    return `  ${tool.name.padEnd(12)} ${tool.description}${alias}`;
+}
 function help() {
+    const groups = toolsByCategory().map(([category, list]) => `${category}:\n${list.map(toolLine).join('\n')}`);
     console.log(`dt <tool> [options]
 
-Tanpa argumen: menu interaktif. Ctrl+C: batalkan.
+Tanpa argumen: menu interaktif dengan pencarian. Ctrl+C: batalkan.
 
-Tools:
-${tools.map((tool) => `  ${tool.name.padEnd(12)} ${tool.description}`).join('\n')}
+${groups.join('\n\n')}
 
 Gunakan dt <tool> --help untuk opsi tool.`);
+}
+function searchTools(term) {
+    const query = (term ?? '').trim().toLowerCase();
+    const matches = tools.filter((tool) => [tool.name, ...(tool.aliases ?? []), tool.description, tool.category].some((text) => text.toLowerCase().includes(query)));
+    const choices = matches.map((tool) => ({
+        name: `${tool.category} › ${tool.name}`,
+        value: tool.name,
+        description: tool.description,
+    }));
+    return query ? choices : [...choices, { name: 'Keluar', value: '', description: '' }];
 }
 async function main(args) {
     if (args[0] === '--help' || args[0] === '-h') {
@@ -23,17 +37,14 @@ async function main(args) {
             help();
             throw new Error('Menu memerlukan terminal. Gunakan dt syncgit --repo <path> [options].');
         }
-        name = await select({
-            message: 'Pilih developer tool',
-            choices: [
-                ...tools.map((tool) => ({ name: tool.name, value: tool.name, description: tool.description })),
-                { name: 'Keluar', value: '' },
-            ],
+        name = await search({
+            message: 'Pilih developer tool (ketik untuk mencari)',
+            source: (term) => searchTools(term),
         });
         if (!name)
             return;
     }
-    const tool = tools.find((candidate) => candidate.name === name);
+    const tool = findTool(name);
     if (!tool)
         throw new UsageError(`Tool tidak dikenal: ${name}`);
     await tool.run(args.slice(1));

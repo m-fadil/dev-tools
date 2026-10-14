@@ -1,6 +1,6 @@
 {
   "name": "@m-fadil/dev-tools",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Modular developer CLI for repository maintenance",
   "type": "module",
@@ -9,7 +9,9 @@
     "dt": "dist/src/cli.js"
   },
   "files": [
-    "dist/src"
+    "dist/src",
+    "README.md",
+    "docs"
   ],
   "engines": {
     "node": "^22.13.0 || >=23.5.0"
