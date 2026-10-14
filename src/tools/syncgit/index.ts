@@ -203,5 +203,6 @@ async function run(args: string[]): Promise<void> {
 export const syncgit: Tool = {
     name: 'syncgit',
     description: 'Sinkron commit dan tag antar remote Git dengan pemetaan mailmap',
+    category: 'Git',
     run,
 };

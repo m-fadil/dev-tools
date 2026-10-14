@@ -20,8 +20,11 @@ menjadi sumber yang sama untuk menu, bantuan, dan dispatch.
 ## Menambahkan command
 
 1. Buat `src/tools/<nama>/index.ts` yang mengekspor objek `Tool`.
-2. Implementasikan `name`, `description`, dan `run(args)` sesuai contract
-   `src/tool.ts`. Pisahkan logika operasi dari parsing opsi dan prompt.
+2. Implementasikan `name`, `description`, `category` (kelompok di bantuan dan menu),
+   opsional `aliases`, dan `run(args)` sesuai contract `src/tool.ts`. Nama dan alias
+   harus unik (dijaga `test/registry.test.ts`). Pisahkan logika operasi dari parsing opsi dan prompt.
+   Tool yang menghasilkan data terstruktur sebaiknya menyediakan `--json`: satu
+   dokumen JSON dari `printJson` (`src/io.ts`) di stdout, diagnostik tetap di stderr.
 3. Import objek tersebut dan daftarkan dalam array `tools` di `src/tools/index.ts`.
 4. Tambahkan panduan penggunaan dalam `docs/` dan tautan di `docs/README.md`.
 5. Tambahkan integration test untuk perilaku yang terlihat oleh pengguna.
