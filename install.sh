@@ -3,12 +3,12 @@
 # lalu memasangnya ke ~/.local/bin.
 #
 #   curl -fsSL https://github.com/m-fadil/dev-tools/releases/latest/download/install.sh | sh
-#   curl -fsSL https://github.com/m-fadil/dev-tools/releases/download/v1.0.0/install.sh | sh
+#   curl -fsSL https://github.com/m-fadil/dev-tools/releases/download/v1.1.0/install.sh | sh
 #
-# Pilihan versi (yang pertama berlaku): DT_VERSION, argumen (`sh -s -- v1.0.0`),
+# Pilihan versi (yang pertama berlaku): DT_VERSION, argumen (`sh -s -- v1.1.0`),
 # versi yang ditanam saat rilis, lalu rilis stabil terbaru.
 #
-#   DT_VERSION      versi yang dipasang, mis. v1.0.0 atau 1.0.0-rc.1
+#   DT_VERSION      versi yang dipasang, mis. v1.1.0 atau 1.1.0-rc.1
 #   DT_INSTALL_DIR  folder tujuan (default: $HOME/.local/bin)
 #   DT_RELEASES_URL dasar URL rilis (default: GitHub Releases; untuk pengujian)
 
@@ -42,7 +42,9 @@ redirect_target() {
     if have curl; then
         curl -fsSLI -o /dev/null -w '%{url_effective}' "$1"
     elif have wget; then
-        wget -S --spider --max-redirect=0 "$1" 2>&1 | sed -n 's/^ *[Ll]ocation: *//p' | tr -d '\r' | sed -n '1p'
+        # wget 1.x prints a Location header; wget2 prints "URL '...' not followed".
+        wget -S --spider --max-redirect=0 "$1" 2>&1 |
+            sed -n -e 's/^ *[Ll]ocation: *//p' -e "s/^URL '\(.*\)' not followed.*/\1/p" | tr -d '\r' | sed -n '1p'
     else
         die "butuh curl atau wget."
     fi
@@ -71,7 +73,7 @@ resolve_version() {
         version="${location##*/tag/}"
         case "$location" in
             */tag/v*) ;;
-            *) die "tidak ada rilis stabil. Tentukan versi: DT_VERSION=v1.0.0" ;;
+            *) die "tidak ada rilis stabil. Tentukan versi: DT_VERSION=v1.1.0" ;;
         esac
     fi
     case "$version" in

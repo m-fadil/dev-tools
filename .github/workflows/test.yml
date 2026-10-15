@@ -40,7 +40,7 @@ jobs:
           sh -n pinned.sh
       - name: installs the latest published binary and verifies it
         run: |
-          DT_VERSION=v1.0.0-rc.1 DT_INSTALL_DIR="$RUNNER_TEMP/bin" sh install.sh
+          DT_VERSION=v1.0.0 DT_INSTALL_DIR="$RUNNER_TEMP/bin" sh install.sh
           "$RUNNER_TEMP/bin/dt" hash abc
 
   container:
