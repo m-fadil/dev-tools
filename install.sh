@@ -119,6 +119,7 @@ main() {
     mv -f "$install_dir/.dt.new" "$install_dir/dt"
 
     printf 'Terpasang: %s/dt\n' "$install_dir"
+    # shellcheck disable=SC2016 # $PATH harus tampil apa adanya
     case ":$PATH:" in
         *":$install_dir:"*) ;;
         *) printf 'Tambahkan ke PATH: export PATH="%s:$PATH"\n' "$install_dir" ;;
