@@ -1,26 +1,18 @@
-# Dependencies
-node_modules/
-
 # Build output
-dist/
-*.tsbuildinfo
+/target/
+legacy/node_modules/
+legacy/dist/
 
 # Logs
 *.log
-npm-debug.log*
 
 # Environment
 .env
 .env.*
 !.env.example
 
-# Test coverage
-coverage/
-.nyc_output/
-
 # Caches
 .cache/
-.eslintcache
 
 # Editors / OS
 .vscode/

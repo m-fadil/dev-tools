@@ -1,0 +1,59 @@
+[package]
+name = "dev-tools"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.99"
+description = "Kumpulan developer tool CLI (dt)"
+publish = false
+
+[[bin]]
+name = "dt"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+inquire = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order", "arbitrary_precision"] }
+sha1 = "0.10"
+sha2 = "0.10"
+sha3 = "0.10"
+md-5 = "0.10"
+blake2 = "0.10"
+hmac = "0.12"
+aes-gcm = "0.10"
+scrypt = "0.11"
+getrandom = "0.3"
+base64 = "0.22"
+hex = "0.4"
+chrono = "0.4"
+chrono-tz = "0.10"
+iana-time-zone = "0.1"
+regex = "1"
+unicode-segmentation = "1"
+flate2 = "1"
+ryu = "1"
+subtle = "2"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/dt-v{ version }-{ target }.{ archive-format }"
+bin-dir = "dt-v{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
+pkg-fmt = "zip"
+
+[package.metadata.binstall.overrides.aarch64-pc-windows-msvc]
+pkg-fmt = "zip"
