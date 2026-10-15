@@ -1,5 +1,5 @@
 mod range;
-mod version;
+pub(crate) mod version;
 
 use crate::errors::{CliError, Result, usage};
 use crate::io::{parse, print_json};
