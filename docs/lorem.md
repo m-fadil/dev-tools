@@ -17,7 +17,7 @@ dt lorem [-w <kata> | -s <kalimat> | -p <paragraf>] [--seed n] [--classic] [--js
 
 Pilih tepat satu satuan. Kalimat terdiri atas 5-15 kata, diawali huruf kapital, diakhiri titik, dan kadang berkoma.
 Paragraf terdiri atas 3-7 kalimat; antarparagraf dipisah satu baris kosong. Tanpa `--seed`, seed diambil dari
-`node:crypto`. Nilai di luar batas menghasilkan kode keluar 2.
+CSPRNG sistem operasi. Nilai di luar batas menghasilkan kode keluar 2.
 
 ```
 dt lorem -w 20 --seed 1

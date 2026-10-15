@@ -1,7 +1,5 @@
 # Build output
 /target/
-legacy/node_modules/
-legacy/dist/
 
 # Logs
 *.log

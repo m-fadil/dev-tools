@@ -4,38 +4,50 @@ Kumpulan alat praktis untuk pekerjaan sehari-hari, cukup dengan perintah `dt`.
 
 ## Instalasi
 
-Untuk pilihan Node.js, siapkan [Node.js 24](https://nodejs.org/) dan
-[Git](https://git-scm.com/). Untuk pilihan Docker, cukup siapkan Docker.
+Pilih salah satu: kompilasi dari sumber dengan Cargo, unduh binary siap pakai,
+atau gunakan Docker. Untuk `syncgit` diperlukan [Git](https://git-scm.com/).
 
-### Dari Git clone
+### Dengan Cargo
 
-```bash
-git clone https://github.com/m-fadil/dev-tools.git
-cd dev-tools
-npm ci
-npm link
-```
-
-### Langsung dengan npx
-
-Tanpa memasang secara global:
+Perlu [Rust](https://rustup.rs/) 1.99 atau lebih baru:
 
 ```bash
-npx --package=github:m-fadil/dev-tools#release dt --help
-npx --package=github:m-fadil/dev-tools#release dt hash "halo"
-```
-
-### Pasang dengan npm
-
-Pasang versi siap pakai langsung:
-
-```bash
-npm install -g github:m-fadil/dev-tools#release
+cargo install --git https://github.com/m-fadil/dev-tools --locked
 dt --help
 ```
 
-Untuk memperbarui, jalankan lagi perintah instalasi yang sama. Paket diambil
-dari GitHub; tidak perlu mengemas atau membangunnya sendiri.
+Untuk memperbarui, jalankan lagi perintah yang sama. Dari clone lokal:
+`cargo install --path . --locked`.
+
+### Binary siap pakai
+
+Setiap rilis di [GitHub Releases](https://github.com/m-fadil/dev-tools/releases)
+menyertakan binary `dt` tanpa dependensi tambahan:
+
+| Sistem | Arsitektur | Berkas |
+| --- | --- | --- |
+| Linux (glibc) | x64 | `dt-v<versi>-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux (glibc) | arm64 | `dt-v<versi>-aarch64-unknown-linux-gnu.tar.gz` |
+| Linux (musl, statis) | x64 | `dt-v<versi>-x86_64-unknown-linux-musl.tar.gz` |
+| Linux (musl, statis) | arm64 | `dt-v<versi>-aarch64-unknown-linux-musl.tar.gz` |
+| macOS | x64 | `dt-v<versi>-x86_64-apple-darwin.tar.gz` |
+| macOS | arm64 (Apple Silicon) | `dt-v<versi>-aarch64-apple-darwin.tar.gz` |
+| Windows | x64 | `dt-v<versi>-x86_64-pc-windows-msvc.zip` |
+| Windows | arm64 | `dt-v<versi>-aarch64-pc-windows-msvc.zip` |
+
+Ekstrak arsip, lalu letakkan `dt` (atau `dt.exe`) di folder yang ada di `PATH`.
+Berkas `SHA256SUMS` pada rilis berisi checksum semua arsip:
+
+```bash
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+Dengan [cargo-binstall](https://github.com/cargo-bins/cargo-binstall) (mengunduh
+binary rilis, tanpa kompilasi):
+
+```bash
+cargo binstall --git https://github.com/m-fadil/dev-tools dev-tools
+```
 
 ### Docker
 
@@ -97,5 +109,5 @@ Contoh lengkap tersedia di [dokumentasi](docs/README.md).
 Untuk menghapus instalasi:
 
 ```bash
-npm uninstall -g @m-fadil/dev-tools
+cargo uninstall dev-tools
 ```

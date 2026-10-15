@@ -8,49 +8,60 @@ on:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        # engines: ^22.13.0 || >=23.5.0 (Node 20 lacks Promise.withResolvers)
-        node: [22, 24]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
-      - run: npm run format:check
-      - run: npm test
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
 
   container:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - arch: arm64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v4
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
-          platforms: arm64
-      - uses: docker/setup-buildx-action@v4
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: stage docker context
+        run: |
+          mkdir -p docker-context/${{ matrix.arch }}
+          cp target/${{ matrix.target }}/release/dt docker-context/${{ matrix.arch }}/dt
+          cp Dockerfile docker-context/Dockerfile
       - name: build container
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          target: runtime
-          platforms: linux/${{ matrix.arch }}
-          load: true
-          push: false
-          tags: dev-tools:smoke
-          cache-from: type=gha,scope=ci-image-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=ci-image-${{ matrix.arch }}
+        run: docker build --build-arg TARGETARCH=${{ matrix.arch }} -t dev-tools:smoke docker-context
       - name: smoke CLI and Git dependencies
         run: |
-          docker run --rm --platform linux/${{ matrix.arch }} dev-tools:smoke --help
-          docker run --rm --platform linux/${{ matrix.arch }} dev-tools:smoke syncgit --help
-          docker run --rm --platform linux/${{ matrix.arch }} --entrypoint sh dev-tools:smoke \
+          docker run --rm dev-tools:smoke --help
+          docker run --rm dev-tools:smoke syncgit --help
+          docker run --rm --entrypoint sh dev-tools:smoke \
             -c 'git --version && ssh -V && test "$(id -u)" -ne 0'

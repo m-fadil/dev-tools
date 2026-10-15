@@ -7,8 +7,8 @@ dt password -c 5 -u               # lima password tanpa karakter mirip
 dt password --only hex -l 64 -e   # hex 64 karakter, entropi ke stderr
 ```
 
-Password dibuat dari CSPRNG `node:crypto`; setiap pilihan karakter memakai
-`crypto.randomInt` (tanpa modulo bias). Hasil ditulis ke stdout, satu per baris.
+Password dibuat dari CSPRNG sistem operasi; setiap pilihan karakter dipilih
+tanpa modulo bias. Hasil ditulis ke stdout, satu per baris.
 
 | Opsi                  | Keterangan                                 |
 | --------------------- | ------------------------------------------ |

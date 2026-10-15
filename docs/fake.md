@@ -21,7 +21,7 @@ Jenis: `name`, `firstname`, `lastname`, `email`, `username`, `phone`, `company`,
 | ----------------- | -------------------------------------------------------------------------------- |
 | `-c, --count <n>` | Jumlah hasil, 1-1000 (default: 1), satu per baris                                |
 | `--locale <l>`    | `id` atau `en` (default: `en`)                                                   |
-| `--seed <n>`      | Seed 0-4294967295 agar hasil dapat diulang (tanpa seed: acak dari `node:crypto`) |
+| `--seed <n>`      | Seed 0-4294967295 agar hasil dapat diulang (tanpa seed: acak dari CSPRNG sistem operasi) |
 | `--json`          | Keluaran JSON                                                                    |
 | `-h, --help`      | Bantuan umum atau terfokus sesuai jenis                                          |
 

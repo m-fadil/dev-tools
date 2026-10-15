@@ -136,7 +136,7 @@ HEAD, dry-run, tag anotasi/ringan/ambigu, retag dan push, opt-in deletion, penol
 tag remote berbeda tanpa menghentikan push lain, dan dirty working tree.
 
 ```bash
-npm test
+cargo test --test syncgit
 ```
 
 [Kembali ke dokumentasi](README.md).

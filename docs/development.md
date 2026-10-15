@@ -4,130 +4,115 @@
 
 ```text
 src/
-  cli.ts                 Entry point, menu/help, dispatch
-  errors.ts              UsageError (exit 2)
-  tool.ts                Contract Tool { name, description, run(args) }
+  main.rs                Entry point, menu/help, dispatch, kode keluar
+  errors.rs              CliError (Usage → 2, Failed → 1, Cancelled → 130)
+  tool.rs                Struct Tool { name, aliases, description, category, run }
+  io.rs                  Parsing argumen (clap), input/output, --json
+  codec.rs               base64, base64url, hex, URL
+  numfmt.rs              Format angka seperti JavaScript (js_number)
+  random.rs              Byte acak dari OS
   tools/
-    index.ts             Registry command
+    mod.rs               Registry command (TOOLS), find_tool, tools_by_category
     <nama>/
-      index.ts           Opsi dan prompt
-      <logika>.ts        Logika operasi (mis. syncgit/sync.ts)
+      mod.rs             Opsi (clap), prompt, run
+      <logika>.rs        Logika operasi (mis. syncgit/sync.rs)
+tests/
+  common/mod.rs          Helper dt(), dt_in(), dt_env() — menjalankan binary tanpa terminal
+  <nama>.rs              Integration test per command
 ```
 
 Setiap command mengelola opsi, prompt, dan implementasinya sendiri. Registry
-menjadi sumber yang sama untuk menu, bantuan, dan dispatch.
+menjadi sumber yang sama untuk menu, bantuan, auto-complete, dan dispatch.
 
 ## Menambahkan command
 
-1. Buat `src/tools/<nama>/index.ts` yang mengekspor objek `Tool`.
-2. Implementasikan `name`, `description`, `category` (kelompok di bantuan dan menu),
-   opsional `aliases`, dan `run(args)` sesuai contract `src/tool.ts`. Nama dan alias
-   harus unik (dijaga `test/registry.test.ts`). Pisahkan logika operasi dari parsing opsi dan prompt.
-   Tool yang menghasilkan data terstruktur sebaiknya menyediakan `--json`: satu
-   dokumen JSON dari `printJson` (`src/io.ts`) di stdout, diagnostik tetap di stderr.
-3. Import objek tersebut dan daftarkan dalam array `tools` di `src/tools/index.ts`.
-4. Tambahkan panduan penggunaan dalam `docs/` dan tautan di `docs/README.md`.
-5. Tambahkan integration test untuk perilaku yang terlihat oleh pengguna.
+1. Buat `src/tools/<nama>/mod.rs` yang mengekspor `pub static TOOL: Tool`.
+2. Isi `name`, `description`, `category` (kelompok di bantuan dan menu), opsional
+   `aliases`, dan `run` sesuai `src/tool.rs`. Nama dan alias harus unik (dijaga
+   `tests/registry.rs`). Deklarasikan opsi dengan `clap::Parser` dan teks bantuan
+   sendiri (`override_help`), lalu parse lewat `io::parse`. Pisahkan logika operasi
+   dari parsing opsi dan prompt. Tool yang menghasilkan data terstruktur sebaiknya
+   menyediakan `--json`: satu dokumen JSON dari `io::print_json` di stdout,
+   diagnostik tetap di stderr.
+3. Tambahkan `pub mod <nama>;` dan `&<nama>::TOOL` ke `src/tools/mod.rs`.
+4. Tambahkan panduan penggunaan di `docs/` dan tautan di `docs/README.md`.
+5. Tambahkan integration test `tests/<nama>.rs` untuk perilaku yang terlihat pengguna.
 
 ## Build dan verifikasi
 
 ```bash
-npm run build
-npm test
-npm run format        # rapikan dengan Prettier
-npm run format:check  # periksa tanpa mengubah file
+cargo build
+cargo fmt --check        # atau cargo fmt untuk merapikan
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
 ```
 
-`npm test` menghapus `dist/`, lalu menjalankan build TypeScript strict dan test runner
-bawaan Node.js, sehingga test yang sudah dihapus tidak ikut berjalan dari build lama.
-Gunakan lingkungan sementara dan data contoh agar test terisolasi dari repo,
-identitas, dan kredensial pengguna.
+Versi Rust dikunci di `rust-toolchain.toml`; `rustup` memasangnya otomatis.
+Gunakan lingkungan sementara (`tempfile`) dan data contoh agar test terisolasi dari
+repo, identitas, dan kredensial pengguna. Test integration menjalankan binary
+dengan environment kosong dan stdin berupa pipe, seperti cron/CI.
 
-CI (`.github/workflows/test.yml`) menjalankan `npm ci`, `npm run format:check`, dan
-`npm test` pada Node 22 dan 24 untuk setiap push ke `main` dan pull request.
-Job container membangun image AMD64 dan ARM64 secara terpisah (ARM64 melalui
-QEMU), lalu menjalankan bantuan CLI, bantuan syncgit, serta pemeriksaan Git,
-SSH, dan user non-root. CI ini tidak memublikasikan image.
-
-Susunan test:
-
-- `test/cli.test.ts` — menjalankan `dist/src/cli.js` tanpa terminal, seperti cron/CI:
-  bantuan, error penggunaan, dan kegagalan cepat ketika prompt membutuhkan TTY.
-- `test/<nama>-args.test.ts` — unit test parsing opsi dan default (fungsi murni,
-  tanpa Git atau prompt).
-- `test/<nama>.test.ts` — integration test perilaku command terhadap repo sementara.
-
-Command `dt` dari package `@m-fadil/dev-tools` yang dipasang melalui `npm link`
-memakai hasil build di `dist/src/`.
-Tidak perlu melakukan link ulang setelah perubahan kode; cukup build ulang.
-Untuk menjalankan tanpa global link:
-
-```bash
-npm start -- --help
-```
+CI (`.github/workflows/test.yml`) menjalankan `cargo fmt --check`, `cargo clippy`,
+dan `cargo test` di Linux, macOS, dan Windows untuk setiap push ke `main` dan pull
+request. Job container membangun binary musl untuk AMD64 dan ARM64 (runner native),
+membungkusnya dengan `Dockerfile`, lalu menjalankan bantuan CLI, bantuan syncgit,
+serta pemeriksaan Git, SSH, dan user non-root. CI ini tidak memublikasikan image.
 
 Prompt interaktif perlu diverifikasi di terminal nyata. Pengujian noninteraktif
 harus memakai opsi eksplisit tanpa memerlukan input terminal.
 
 ## Rilis
 
-Rilis dipicu oleh push tag `vX.Y.Z` pada commit sumber, bukan perubahan versi
-di branch `main`. Dari working tree bersih setelah perubahan siap dirilis:
+Rilis dipicu oleh push tag `vX.Y.Z` pada commit sumber. Dari working tree bersih
+setelah perubahan siap dirilis:
 
 ```bash
-npm version patch            # atau minor / major; mengubah package.json + lock, membuat commit dan tag
+# ubah version di Cargo.toml, lalu perbarui Cargo.lock
+cargo check
+git commit -am "chore: release vX.Y.Z"
+git tag vX.Y.Z
 git push origin main         # setelah mendapat persetujuan untuk push
-git push origin "v$(node -p 'require("./package.json").version')"
+git push origin vX.Y.Z
 ```
 
+Gunakan `X.Y.Z-rc.1` (di `Cargo.toml` dan tag) untuk uji coba: tag dengan `-`
+ditandai prerelease dan tidak memperbarui tag image `latest`.
+
 Workflow `release` (`.github/workflows/release.yml`) checkout `${{ github.sha }}`
-pada event tag, memastikan nama tag sama dengan `v<package.json version>`,
-lalu menjalankan `format:check` dan `npm test`. Jika verifikasi gagal, distribusi
-dan image tidak dipublikasikan. Push branch saja tidak menerbitkan rilis.
+pada event tag dan menjalankan job berikut:
 
-Job `image` checkout SHA event yang sama dan memublikasikan manifest
-multi-arsitektur (`linux/amd64`, `linux/arm64`) ke `ghcr.io/m-fadil/dev-tools`
-memakai `GITHUB_TOKEN` dengan izin `packages: write`. Metadata image berasal
-dari tag: misalnya `v0.4.0` menghasilkan `0.4.0`, `0.4`, `0`, serta `latest`
-untuk rilis stabil. Prerelease tidak memperbarui `latest`.
-Build menyertakan provenance dan SBOM, dengan attestation di penyimpanan GitHub.
-Visibilitas package GHCR diatur di GitHub; ubah menjadi public bila image harus
-bisa ditarik tanpa login.
+1. `verify`: memastikan nama tag sama dengan `v<version di Cargo.toml>`, lalu
+   `cargo fmt --check`, `cargo clippy`, dan `cargo test`. Jika gagal, tidak ada
+   yang dipublikasikan.
+2. `build`: kompilasi `--release` untuk 8 target (Linux gnu dan musl x64/arm64,
+   macOS x64/arm64, Windows x64/arm64) pada runner native, uji cepat binary
+   (`dt --help`, `dt hash abc`), lalu kemas menjadi
+   `dt-v<versi>-<target>.tar.gz` (Windows: `.zip`) dengan folder
+   `dt-v<versi>-<target>/` berisi `dt` dan `README.md`, plus berkas `.sha256`.
+   Penamaan arsip ini dipakai oleh `[package.metadata.binstall]` di `Cargo.toml`;
+   ubah keduanya bersamaan.
+3. `publish`: membuat GitHub release (prerelease bila tag memuat `-`), melampirkan
+   semua arsip dan `SHA256SUMS`, dengan attestation provenance. Bila release sudah
+   ada (rerun), berkas diunggah ulang dengan `--clobber`.
+4. `image`: membungkus binary musl amd64/arm64 ke image multi-arsitektur
+   `ghcr.io/m-fadil/dev-tools` (`Dockerfile`, tanpa kompilasi di Docker)
+   memakai `GITHUB_TOKEN` dengan izin `packages: write`. Tag image berasal dari
+   tag Git: `v1.0.0` menghasilkan `1.0.0`, `1.0`, `1`, serta `latest` untuk rilis
+   stabil. Build menyertakan provenance dan SBOM, dengan attestation di GitHub.
+   Visibilitas package GHCR diatur di GitHub; ubah menjadi public bila image harus
+   bisa ditarik tanpa login.
 
-Eksekusi manual hanya berjalan bila ref yang dipilih berupa tag versi; branch
-dilewati. Untuk retry setelah publikasi gagal, rerun workflow tag tersebut.
-Jangan memindahkan atau force-push tag rilis. SHA event mengunci sumber tiap
-run, tetapi tidak membuat tag registry immutable atau build bit-for-bit:
-base image dan paket OS masih bisa berubah saat build ulang.
-
-Setelah verifikasi, `scripts/prepare-release.mjs` menyalin `dist/src`, README,
-dokumentasi, dan metadata npm ke artifact distribusi. Package distribusi tidak
-memuat `scripts` atau `devDependencies`, jadi instalasi Git global tidak
-menjalankan `prepare` dan tidak memerlukan compiler.
-
-Job `distribution` memakai artifact tersebut untuk memperbarui branch `release`
-pada tag stabil saja. Commit mencatat tag dan SHA sumber, mempertahankan riwayat
-branch, dan memakai push biasa (bukan force-push). Izin `contents: write` hanya
-diberikan ke job ini. Tag sumber tidak diubah atau dibuat ulang. Bila aturan
-proteksi branch melarang push bot, sesuaikan aturan untuk branch distribusi.
-
-Checkout kode sumber tetap memakai `prepare` untuk membangun TypeScript.
-Docker memasang dependency dengan `--ignore-scripts`, membangun TypeScript
-secara eksplisit di stage build, dan menyalin hasilnya ke stage runtime.
+Eksekusi manual hanya berjalan bila ref yang dipilih berupa tag versi. Untuk retry
+setelah publikasi gagal, rerun workflow tag tersebut. Jangan memindahkan atau
+force-push tag rilis. SHA event mengunci sumber tiap run, tetapi tidak membuat tag
+registry immutable atau build bit-for-bit: base image dan paket OS masih bisa
+berubah saat build ulang.
 
 Verifikasi attestation:
 
 ```bash
-gh attestation verify --owner m-fadil oci://ghcr.io/m-fadil/dev-tools:0.4.0
+gh attestation verify --owner m-fadil oci://ghcr.io/m-fadil/dev-tools:1.0.0
+gh attestation verify --owner m-fadil dt-v1.0.0-x86_64-unknown-linux-gnu.tar.gz
 ```
-
-Setelah rilis baru memperbarui branch distribusi, instalasi siap pakai:
-
-```bash
-npm install -g github:m-fadil/dev-tools#release
-npx --package=github:m-fadil/dev-tools#release dt --help
-```
-
-Jangan memindahkan atau membuat ulang tag yang sudah dipublikasikan.
 
 [Kembali ke dokumentasi](README.md).

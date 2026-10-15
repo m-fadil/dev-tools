@@ -38,7 +38,7 @@ dt semver satisfies 1.4.0 "^1.2 || >=3"      # true (exit 0) / false (exit 1)
   alfanumerik dibandingkan menurut urutan ASCII; himpunan prerelease yang lebih pendek lebih rendah bila awalannya sama.
   Metadata build diabaikan.
 
-### Bump (semantik npm)
+### Bump
 
 - `major`/`minor`/`patch` pada versi prerelease hanya melepas tag bila memungkinkan: `1.2.3-beta.1` -> `patch` =
   `1.2.3`; `1.3.0-beta.1` -> `minor` = `1.3.0`; `2.0.0-rc.1` -> `major` = `2.0.0`.

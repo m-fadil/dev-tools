@@ -14,7 +14,11 @@ use tool::Tool;
 use tools::{TOOLS, find_tool, tools_by_category};
 
 fn tool_line(tool: &Tool) -> String {
-    let alias = if tool.aliases.is_empty() { String::new() } else { format!(" (alias: {})", tool.aliases.join(", ")) };
+    let alias = if tool.aliases.is_empty() {
+        String::new()
+    } else {
+        format!(" (alias: {})", tool.aliases.join(", "))
+    };
     format!("  {:<12} {}{}", tool.name, tool.description, alias)
 }
 

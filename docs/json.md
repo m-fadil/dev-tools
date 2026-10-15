@@ -34,14 +34,14 @@ muncul prompt (ke stderr).
 
 ## Catatan
 
-- Memakai `JSON.parse`: bilangan bulat di atas 2^53 (mis. ID 64-bit) kehilangan
-  presisi dan angka seperti `1.0` ditulis ulang `1`. Jangan format ulang data
-  yang bergantung pada angka besar.
+- Sejak v1.0.0 memakai `serde_json` dengan presisi arbitrer: bilangan bulat
+  di atas 2^53 (mis. ID 64-bit) dipertahankan persis, tidak lagi dibulatkan
+  seperti pada versi sebelumnya.
 - Key berupa bilangan bulat (`"2"`, `"10"`) selalu diurutkan lebih dulu oleh
   JavaScript, juga tanpa `--sort-keys`.
 - Key duplikat: yang terakhir dipakai. BOM di awal input diabaikan.
-- Posisi error selalu dicari dengan pemindai JSON ketat (bukan dari pesan `JSON.parse`,
-  yang mengutip input). Kolom dihitung per karakter UTF-16.
+- Posisi error selalu dicari dengan pemindai JSON ketat, bukan pesan parser
+  yang mengutip input. Kolom dihitung per karakter UTF-16.
 - Nesting maksimal 2000 level (objek atau array), berlaku untuk semua mode,
   termasuk `--check` dan format biasa. Lebih dalam dari itu (atau saat format
   gagal karena tumpukan habis) dilaporkan `JSON terlalu dalam (maks 2000 level)`,

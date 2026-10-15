@@ -23,7 +23,7 @@
 - [text](text.md) — statistik dan transformasi teks.
 - [ascii](ascii.md) — tabel dan pencarian karakter ASCII.
 - [color](color.md) — konversi warna dan kontras WCAG.
-- [regex](regex.md) — uji regex dengan grup tangkapan dan batas waktu.
+- [regex](regex.md) — uji regex Rust dengan grup tangkapan dan penggantian.
 - [csv](csv.md) — tampilkan dan konversi CSV.
 - [lorem](lorem.md) — teks lorem ipsum.
 - [fake](fake.md) — data palsu (nama, email, alamat, dll.).
@@ -34,5 +34,6 @@
 ## Pengembangan
 
 - [Maintenance dan struktur kode](development.md).
+- [Catatan rilis v1.0.0](releases.md).
 
 [Kembali ke ringkasan repo](../README.md).

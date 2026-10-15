@@ -28,7 +28,12 @@ pub fn dt_in_dir(args: &[&str], stdin: &[u8], env: &[(&str, &str)], cwd: Option<
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
-    let mut child = cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
     let mut pipe = child.stdin.take().unwrap();
     let data = stdin.to_vec();
     let writer = std::thread::spawn(move || {

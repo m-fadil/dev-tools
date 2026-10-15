@@ -24,13 +24,20 @@ pub fn choice<T: Copy>(value: Option<&str>, allowed: &[(&str, T)], fallback: T, 
         return Ok(*t);
     }
     let names: Vec<&str> = allowed.iter().map(|(n, _)| *n).collect();
-    Err(usage(format!("Nilai --{option} tidak valid: {v}. Pilihan: {}", names.join(", "))))
+    Err(usage(format!(
+        "Nilai --{option} tidak valid: {v}. Pilihan: {}",
+        names.join(", ")
+    )))
 }
 
 /// Strict non-negative integer within [min, max] (digits only).
 pub fn integer(value: Option<&str>, fallback: i64, min: i64, max: i64, option: &str) -> Result<i64> {
     let Some(v) = value else { return Ok(fallback) };
-    let n = if !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()) { v.parse::<i64>().ok() } else { None };
+    let n = if !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()) {
+        v.parse::<i64>().ok()
+    } else {
+        None
+    };
     match n {
         // JS safe integer bound
         Some(n) if n <= 9_007_199_254_740_991 && n >= min && n <= max => Ok(n),

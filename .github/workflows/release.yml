@@ -12,6 +12,9 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   verify:
     # Manual releases must select a version tag, never a branch.
@@ -21,89 +24,134 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
-          node-version: 24
-          cache: npm
-      - name: verify tag matches package version
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: verify tag matches crate version
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          node --input-type=module <<'JS'
-          import { readFileSync } from 'node:fs';
-          const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
-          if (process.env.RELEASE_TAG !== `v${version}`) {
-            throw new Error(`Tag ${process.env.RELEASE_TAG} does not match package version v${version}`);
-          }
-          JS
-      - run: npm ci --ignore-scripts
-      - run: npm run format:check
-      - run: npm test
-      - name: prepare prebuilt npm distribution
-        env:
-          DIST_DIR: ${{ runner.temp }}/distribution
-        run: node scripts/prepare-release.mjs "$DIST_DIR"
-      - name: smoke install prebuilt package
-        working-directory: ${{ runner.temp }}/distribution
-        env:
-          INSTALL_PREFIX: ${{ runner.temp }}/npm-install
-        run: |
-          PACKAGE=$(npm pack --pack-destination "$RUNNER_TEMP")
-          npm install --global --prefix "$INSTALL_PREFIX" "$RUNNER_TEMP/$PACKAGE"
-          "$INSTALL_PREFIX/bin/dt" --help
-          test "$("$INSTALL_PREFIX/bin/dt" hash abc)" = \
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: npm-distribution
-          path: ${{ runner.temp }}/distribution
-          if-no-files-found: error
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          if [ "$RELEASE_TAG" != "v$version" ]; then
+            echo "Tag $RELEASE_TAG does not match crate version v$version" >&2
+            exit 1
+          fi
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --locked
 
-  distribution:
-    name: publish prebuilt release branch
+  build:
+    name: build ${{ matrix.target }}
     needs: verify
-    # Keep the install branch on stable releases; prereleases remain source tags.
-    if: github.ref_type == 'tag' && !contains(github.ref_name, '-')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
+          - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
+          - { target: x86_64-apple-darwin, os: macos-15-intel }
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-pc-windows-msvc, os: windows-latest }
+          - { target: aarch64-pc-windows-msvc, os: windows-11-arm }
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@1.99.0
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: install musl tools
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: smoke built binary
+        shell: bash
+        run: |
+          exe=target/${{ matrix.target }}/release/dt
+          if [ "${{ runner.os }}" = "Windows" ]; then exe="$exe.exe"; fi
+          "$exe" --help
+          test "$("$exe" hash abc)" = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+      - name: package
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          name="dt-${TAG}-${TARGET}"
+          mkdir "$name"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp "target/${TARGET}/release/dt.exe" "$name/"
+          else
+            cp "target/${TARGET}/release/dt" "$name/"
+          fi
+          cp README.md "$name/"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            archive="$name.zip"
+            7z a -tzip "$archive" "$name"
+          else
+            archive="$name.tar.gz"
+            tar czf "$archive" "$name"
+          fi
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$archive" > "$archive.sha256"
+          else
+            shasum -a 256 "$archive" > "$archive.sha256"
+          fi
+          echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+          if-no-files-found: error
+
+  publish:
+    name: publish GitHub release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
       - uses: actions/download-artifact@v4
         with:
-          name: npm-distribution
-          path: ${{ runner.temp }}/distribution
-      - name: publish distribution without changing source tags
+          pattern: dist-*
+          merge-multiple: true
+      - name: checksums
+        run: cat dt-*.sha256 > SHA256SUMS
+      - name: attest provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dt-*.tar.gz
+            dt-*.zip
+      - name: create release
         env:
-          DIST_DIR: ${{ runner.temp }}/distribution
-          RELEASE_REPO: ${{ runner.temp }}/release-repo
-          RELEASE_TAG: ${{ github.ref_name }}
-          SOURCE_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
         run: |
-          if git show-ref --verify --quiet refs/remotes/origin/release; then
-            git worktree add --detach "$RELEASE_REPO" origin/release
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dt-* SHA256SUMS --clobber
           else
-            git worktree add --detach "$RELEASE_REPO" HEAD
-            git -C "$RELEASE_REPO" checkout --orphan release
+            flags=""
+            case "$TAG" in *-*) flags="--prerelease" ;; esac
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes $flags dt-* SHA256SUMS
           fi
-          git -C "$RELEASE_REPO" rm -rf --ignore-unmatch .
-          cp -R "$DIST_DIR"/. "$RELEASE_REPO"/
-          git -C "$RELEASE_REPO" add .
-          if git -C "$RELEASE_REPO" diff --cached --quiet; then
-            echo "Distribution is already current."
-            exit 0
-          fi
-          git -C "$RELEASE_REPO" -c user.name="github-actions[bot]" \
-            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -m "release $RELEASE_TAG" -m "source: $SOURCE_SHA"
-          git -C "$RELEASE_REPO" push origin HEAD:refs/heads/release
 
   image:
     name: publish multi-architecture image
-    needs: verify
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -115,9 +163,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - uses: docker/setup-qemu-action@v4
+      - uses: actions/download-artifact@v4
         with:
-          platforms: arm64
+          pattern: dist-*-linux-musl
+          merge-multiple: true
+          path: musl
+      - name: stage docker context
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p docker-context/amd64 docker-context/arm64
+          tar xzf "musl/dt-${TAG}-x86_64-unknown-linux-musl.tar.gz" -C musl
+          tar xzf "musl/dt-${TAG}-aarch64-unknown-linux-musl.tar.gz" -C musl
+          cp "musl/dt-${TAG}-x86_64-unknown-linux-musl/dt" docker-context/amd64/dt
+          cp "musl/dt-${TAG}-aarch64-unknown-linux-musl/dt" docker-context/arm64/dt
+          cp Dockerfile docker-context/Dockerfile
       - uses: docker/setup-buildx-action@v4
       - name: log in to GHCR
         uses: docker/login-action@v4
@@ -138,15 +198,12 @@ jobs:
         id: build
         uses: docker/build-push-action@v7
         with:
-          context: .
-          target: runtime
+          context: docker-context
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
-          cache-from: type=gha,scope=release-image
-          cache-to: type=gha,mode=max,scope=release-image
           provenance: mode=max
           sbom: true
       - name: attest provenance

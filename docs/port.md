@@ -1,7 +1,7 @@
 # Utilitas port
 
 Memeriksa port TCP atau mencari port yang masih kosong. Hanya memakai soket
-`node:net`; tidak ada proses lain yang dijalankan.
+soket TCP bawaan sistem; tidak ada proses lain yang dijalankan.
 Exit: 0 sukses, 1 gagal (port tertutup/timeout, tidak ada port kosong, galat soket), 2 penggunaan salah.
 
 ## check
@@ -22,7 +22,7 @@ Port harus bilangan bulat 1-65535. Firewall yang menjatuhkan paket tampil sebaga
 ```bash
 dt port free                            # port kosong pertama dari 3000
 dt port free --from 8000 --to 8100
-PORT=$(dt port free --from 4000) node server.js
+PORT=$(dt port free --from 4000) ./server
 ```
 
 Mencari port pertama dalam `--from` (default 3000) sampai `--to` (default 65535),

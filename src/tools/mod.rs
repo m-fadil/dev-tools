@@ -73,7 +73,10 @@ pub static TOOLS: &[&Tool] = &[
 
 /// Resolves a command name or alias.
 pub fn find_tool(name: &str) -> Option<&'static Tool> {
-    TOOLS.iter().copied().find(|t| t.name == name || t.aliases.contains(&name))
+    TOOLS
+        .iter()
+        .copied()
+        .find(|t| t.name == name || t.aliases.contains(&name))
 }
 
 /// Tools grouped by category, categories in first-appearance order, tools sorted by name.

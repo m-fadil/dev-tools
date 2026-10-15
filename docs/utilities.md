@@ -106,9 +106,9 @@ sebagai identifier, bukan rahasia. Untuk rahasia pakai `dt random token`.
   yang sama maupun bila jam mundur; bila counter meluap, timestamp dimajukan
   1 ms. Urutan leksikografis sama dengan urutan waktu.
 - **v1**: timestamp 60 bit dalam satuan 100 ns sejak 1582-10-15, clock sequence
-  14 bit acak, node 48 bit acak dengan bit multicast diset (RFC 9562 6.10);
+  14 bit acak, identitas simpul 48 bit acak dengan bit multicast diset (RFC 9562 6.10);
   alamat MAC asli tidak pernah dibaca. Timestamp naik ketat dalam satu eksekusi,
-  jadi nilai tidak pernah kembar. Node dan clock sequence tetap per eksekusi.
+  jadi nilai tidak pernah kembar. Identitas simpul dan clock sequence tetap per eksekusi.
   v1 tidak terurut secara leksikografis.
 
 ### Token
@@ -121,7 +121,7 @@ dt random token -c 3 --json
 dt random token -h                       # bantuan token
 ```
 
-Token memakai CSPRNG `node:crypto`; tidak perlu flag `--token`. Opsi token:
+Token memakai CSPRNG sistem operasi; tidak perlu flag `--token`. Opsi token:
 `-l/--length`, `-b/--bytes`, `--bits`, `-f/--format`, `-c/--count`,
 `--json`, dan `-h/--help`. Tidak menerima argumen teks atau `--version`.
 

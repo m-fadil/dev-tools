@@ -5,7 +5,13 @@ use common::dt;
 fn top_level_help_lists_registered_commands() {
     let top = dt(&["--help"]);
     assert_eq!(top.code, 0);
-    assert!(top.out.lines().any(|l| l.starts_with("  syncgit      ") && l.len() > 15), "{}", top.out);
+    assert!(
+        top.out
+            .lines()
+            .any(|l| l.starts_with("  syncgit      ") && l.len() > 15),
+        "{}",
+        top.out
+    );
 }
 
 #[test]

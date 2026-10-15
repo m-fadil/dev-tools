@@ -23,7 +23,11 @@ pub fn js_number(v: f64) -> String {
     } else {
         let e = n - 1;
         let exp = format!("{}{}", if e < 0 { '-' } else { '+' }, e.abs());
-        if k == 1 { format!("{digits}e{exp}") } else { format!("{}.{}e{exp}", &digits[..1], &digits[1..]) }
+        if k == 1 {
+            format!("{digits}e{exp}")
+        } else {
+            format!("{}.{}e{exp}", &digits[..1], &digits[1..])
+        }
     };
     format!("{sign}{body}")
 }
