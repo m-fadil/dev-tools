@@ -479,3 +479,12 @@ fn jwt_above_json_depth_limit_matches_legacy_sign_and_decode() {
     assert_eq!(checked.code, 1);
     assert_eq!(checked.err.trim(), "JSON terlalu dalam (maks 2000 level)");
 }
+
+#[test]
+fn now_rejects_non_ascii_digits() {
+    for v in ["٢٠٢٤-01-01", "٢٠٢٤"] {
+        let r = dt(&["jwt", "--now", v, SAMPLE]);
+        assert_eq!(r.code, 2, "{v}: {}", r.err);
+        assert!(r.err.contains("Nilai --now tidak valid"), "{}", r.err);
+    }
+}

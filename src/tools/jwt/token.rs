@@ -106,12 +106,12 @@ pub fn now(value: &str) -> Result<f64> {
             "Nilai --now tidak valid: {value}. Pakai ISO-8601 atau epoch detik."
         ))
     };
-    let numeric = regex::Regex::new(r"^\d+(\.\d+)?$").map_err(|e| failed(e.to_string()))?;
+    let numeric = regex::Regex::new(r"^[0-9]+(\.[0-9]+)?$").map_err(|e| failed(e.to_string()))?;
     if numeric.is_match(value) {
         return value.parse().map_err(|_| invalid());
     }
     let re = regex::Regex::new(
-        r"(?i)^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?(?:(Z)|([+-])(\d{2}):?(\d{2}))?)?$",
+        r"(?i)^([0-9]{4})-([0-9]{2})-([0-9]{2})(?:[T ]([0-9]{2}):([0-9]{2})(?::([0-9]{2})(\.[0-9]+)?)?(?:(Z)|([+-])([0-9]{2}):?([0-9]{2}))?)?$",
     )
     .map_err(|e| failed(e.to_string()))?;
     let m = re.captures(value).ok_or_else(invalid)?;

@@ -1,5 +1,4 @@
 use crate::errors::{CliError, Result, usage};
-use serde::Deserialize;
 use serde_json::Value;
 
 pub const MAX_DEPTH: usize = 2000;
@@ -38,7 +37,7 @@ fn unexpected(text: &str, i: usize) -> CliError {
         let end = (p + 10).min(chars.len());
         format!(
             "{}\"{}\"{}",
-            if start > 0 { "..." } else { "" },
+            if p >= 10 { "..." } else { "" },
             String::from_utf16_lossy(&chars[start..end]),
             if end < chars.len() { "..." } else { "" }
         )
@@ -48,7 +47,12 @@ fn unexpected(text: &str, i: usize) -> CliError {
     } else {
         format!(
             "Unexpected token '{}', {excerpt} is not valid JSON",
-            text[i..].chars().next().unwrap_or('\0')
+            // V8 reports the first UTF-16 unit; a lone surrogate prints as U+FFFD.
+            text[i..]
+                .chars()
+                .next()
+                .filter(|c| c.len_utf16() == 1)
+                .unwrap_or('\u{fffd}')
         )
     };
     syntax(text, i, message)
@@ -380,9 +384,101 @@ pub fn parse(text: &str) -> Result<Value> {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     validate(text)?;
     let prepared = prepare_strings(text);
-    let mut deserializer = serde_json::Deserializer::from_str(&prepared);
-    deserializer.disable_recursion_limit();
-    Value::deserialize(&mut deserializer).map_err(|e| CliError::Failed(e.to_string()))
+    let mut builder = Builder { text: &prepared, i: 0 };
+    builder.value()
+}
+
+/// Builds a `Value` from text already accepted by `validate`. serde_json's own
+/// `Value` deserializer would treat an object whose first key is its private
+/// arbitrary-precision marker as a number, so only scalar tokens go through it.
+struct Builder<'a> {
+    text: &'a str,
+    i: usize,
+}
+impl Builder<'_> {
+    fn skip_whitespace(&mut self) {
+        let b = self.text.as_bytes();
+        while self.i < b.len() && b" \t\r\n".contains(&b[self.i]) {
+            self.i += 1;
+        }
+    }
+    fn string(&mut self) -> Result<String> {
+        let b = self.text.as_bytes();
+        let start = self.i;
+        self.i += 1;
+        while b[self.i] != b'"' {
+            self.i += if b[self.i] == b'\\' { 2 } else { 1 };
+        }
+        self.i += 1;
+        serde_json::from_str(&self.text[start..self.i]).map_err(|e| CliError::Failed(e.to_string()))
+    }
+    fn value(&mut self) -> Result<Value> {
+        self.skip_whitespace();
+        let b = self.text.as_bytes();
+        let start = self.i;
+        match b[start] {
+            b'{' => {
+                self.i += 1;
+                let mut map = serde_json::Map::new();
+                self.skip_whitespace();
+                if b[self.i] == b'}' {
+                    self.i += 1;
+                    return Ok(Value::Object(map));
+                }
+                loop {
+                    self.skip_whitespace();
+                    let key = self.string()?;
+                    self.skip_whitespace();
+                    self.i += 1;
+                    let value = self.value()?;
+                    map.insert(key, value);
+                    self.skip_whitespace();
+                    let delimiter = b[self.i];
+                    self.i += 1;
+                    if delimiter == b'}' {
+                        return Ok(Value::Object(map));
+                    }
+                }
+            }
+            b'[' => {
+                self.i += 1;
+                let mut values = Vec::new();
+                self.skip_whitespace();
+                if b[self.i] == b']' {
+                    self.i += 1;
+                    return Ok(Value::Array(values));
+                }
+                loop {
+                    values.push(self.value()?);
+                    self.skip_whitespace();
+                    let delimiter = b[self.i];
+                    self.i += 1;
+                    if delimiter == b']' {
+                        return Ok(Value::Array(values));
+                    }
+                }
+            }
+            b'"' => Ok(Value::String(self.string()?)),
+            b't' => {
+                self.i += 4;
+                Ok(Value::Bool(true))
+            }
+            b'f' => {
+                self.i += 5;
+                Ok(Value::Bool(false))
+            }
+            b'n' => {
+                self.i += 4;
+                Ok(Value::Null)
+            }
+            _ => {
+                while self.i < b.len() && matches!(b[self.i], b'0'..=b'9' | b'-' | b'+' | b'.' | b'e' | b'E') {
+                    self.i += 1;
+                }
+                serde_json::from_str(&self.text[start..self.i]).map_err(|e| CliError::Failed(e.to_string()))
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

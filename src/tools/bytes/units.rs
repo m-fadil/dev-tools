@@ -18,7 +18,7 @@ pub fn parse_size(text: &str) -> Result<(BigUint, bool)> {
     if input.starts_with('-') {
         return Err(usage(format!("Ukuran tidak boleh negatif: {input}")));
     }
-    let re = regex::Regex::new(r"^(?:([0-9]+)(?:\.([0-9]+))?|\.([0-9]+))\s*([a-zA-Z]*)$")
+    let re = regex::Regex::new(r"^(?:([0-9]+)(?:\.([0-9]+))?|\.([0-9]+))[\t-\r \u{a0}\u{1680}\u{2000}-\u{200a}\u{2028}\u{2029}\u{202f}\u{205f}\u{3000}\u{feff}]*([a-zA-Z]*)$")
         .map_err(|e| usage(e.to_string()))?;
     let c = re
         .captures(input)

@@ -240,3 +240,10 @@ fn lone_surrogates_at_cli_boundary_follow_utf8_replacement_rules() {
         json!(["\u{e000}", "���", "���", "\u{10000}"])
     );
 }
+
+#[test]
+fn repeated_options_report_first_inserted() {
+    let r = text(&["stats", "--trim", "--sort", "--trim", "x"], "");
+    assert_eq!(r.code, 2);
+    assert!(r.err.contains("--trim tidak berlaku untuk \"stats\""), "{}", r.err);
+}

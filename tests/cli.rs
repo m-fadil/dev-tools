@@ -29,3 +29,11 @@ fn no_terminal_menu_fails_fast() {
     assert!(r.err.contains("Menu memerlukan terminal"));
     assert!(r.out.contains("dt <tool> [options]"));
 }
+
+#[test]
+fn empty_first_arg_acts_like_no_argument() {
+    let r = dt(&[""]);
+    assert_eq!(r.code, 1);
+    assert!(r.err.contains("Menu memerlukan terminal"));
+    assert!(r.out.contains("dt <tool> [options]"));
+}

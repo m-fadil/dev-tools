@@ -69,7 +69,7 @@ fn run(args: Vec<OsString>) -> Result<()> {
         None => now,
     };
     if zone.invalid_default {
-        return Err(CliError::Failed("Invalid time zone specified: Etc/Unknown".into()));
+        return Err(CliError::Failed(format!("Invalid time zone specified: {}", zone.name)));
     }
     let utc = utc_iso(ms);
     let iso = format_in_zone(ms, &zone);

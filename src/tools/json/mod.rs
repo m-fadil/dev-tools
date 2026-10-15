@@ -25,7 +25,7 @@ Format, validasi, atau query JSON dari teks, file, atau stdin. Tanpa teks/--file
   -h, --help           Tampilkan bantuan
 
 Exit: 0 sukses, 1 JSON tidak valid/terlalu dalam atau path tidak ditemukan, 2 penggunaan salah.
-Angka bulat di atas 2^53 kehilangan presisi (JSON.parse); key bilangan bulat selalu diurutkan lebih dulu oleh JavaScript.
+Angka bulat di atas 2^53 dipertahankan persis (tanpa pembulatan); key bilangan bulat selalu diurutkan lebih dulu oleh JavaScript.
 Nesting di atas 2000 level ditolak (exit 1). Indeks query tanpa nol di depan dan maks 2^53-1.
 Contoh: dt json -s -f data.json   |   curl -s api | dt json -q 'items[0].id' -r
 "#;

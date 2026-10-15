@@ -417,3 +417,63 @@ fn malformed_and_empty_system_timezone_overrides() {
     let d: Value = serde_json::from_str(&r.out).unwrap();
     assert_eq!(d["zone"], default["zone"]);
 }
+
+#[test]
+fn system_zone_env_is_case_sensitive_like_icu() {
+    let zone = |tz: &str| {
+        let r = dt_env(&["time", "--json", "0"], b"", &[("TZ", tz)]);
+        assert_eq!(r.code, 0, "{tz}: {}", r.err);
+        let d: Value = serde_json::from_str(&r.out).unwrap();
+        d["zone"].clone()
+    };
+    for tz in [
+        "asia/jakarta",
+        "utc",
+        "gmt",
+        "EUROPE/BERLIN",
+        "Etc/utc",
+        "US/pacific",
+        "cet",
+    ] {
+        assert_eq!(zone(tz), json!({"iso":"1970-01-01T00:00:00.000+00:00"}), "{tz}");
+        let r = dt_env(&["time", "0"], b"", &[("TZ", tz)]);
+        assert_eq!(r.code, 1, "{tz}");
+        assert_eq!(r.err, "Cannot read properties of undefined (reading 'length')\n");
+    }
+    assert_eq!(zone("US/Pacific")["name"], "America/Los_Angeles");
+}
+
+#[test]
+fn system_zone_env_systemv_and_gmt_offset_names() {
+    for (tz, name, iso) in [
+        ("SystemV/PST8", "SystemV/PST8", "1969-12-31T16:00:00.000-08:00"),
+        ("SystemV/HST10", "SystemV/HST10", "1969-12-31T14:00:00.000-10:00"),
+        ("GMT+7", "+07:00", "1970-01-01T07:00:00.000+07:00"),
+        ("GMT-3", "-03:00", "1969-12-31T21:00:00.000-03:00"),
+    ] {
+        let r = dt_env(&["time", "--json", "0"], b"", &[("TZ", tz)]);
+        assert_eq!(r.code, 0, "{tz}: {}", r.err);
+        let d: Value = serde_json::from_str(&r.out).unwrap();
+        assert_eq!(d["zone"], json!({"name": name, "iso": iso}), "{tz}");
+    }
+    // DST variants and POSIX rule strings resolve to the system zone.
+    let default = doc(&["time", "--json", "0"]);
+    for tz in ["SystemV/PST8PDT", "systemv/pst8pdt", "EST5EDT,M3.2.0,M11.1.0"] {
+        let r = dt_env(&["time", "--json", "0"], b"", &[("TZ", tz)]);
+        assert_eq!(r.code, 0, "{tz}: {}", r.err);
+        let d: Value = serde_json::from_str(&r.out).unwrap();
+        assert_eq!(d["zone"], default["zone"], "{tz}");
+    }
+}
+
+#[test]
+fn system_zone_env_unknown_zone_ids_are_invalid() {
+    for tz in ["Factory", "Etc/Unknown"] {
+        for args in [vec!["time", "--json", "0"], vec!["time", "0"]] {
+            let r = dt_env(&args, b"", &[("TZ", tz)]);
+            assert_eq!(r.code, 1, "{tz}");
+            assert_eq!(r.out, "");
+            assert_eq!(r.err, "Invalid time zone specified: Etc/Unknown\n");
+        }
+    }
+}

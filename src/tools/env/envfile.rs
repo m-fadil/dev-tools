@@ -53,6 +53,12 @@ fn value(rest: &str) -> Option<String> {
     }
 }
 
+fn valid_key(key: &str) -> bool {
+    let mut cs = key.chars();
+    cs.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+        && cs.all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c))
+}
+
 pub fn parse(content: &str) -> Parsed {
     let mut result = Parsed::default();
     let mut previous = BTreeMap::new();
@@ -61,17 +67,24 @@ pub fn parse(content: &str) -> Parsed {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
+        if line.contains(['\r', '\u{2028}', '\u{2029}']) {
+            result.invalid.push(index + 1);
+            continue;
+        }
         if let Some(rest) = line.strip_prefix("export")
             && rest.starts_with(space)
         {
-            line = rest.trim_start_matches(space);
+            let rest = rest.trim_start_matches(space);
+            if rest
+                .split_once('=')
+                .is_some_and(|(k, _)| valid_key(k.trim_end_matches(space)))
+            {
+                line = rest;
+            }
         }
         let parsed = line.split_once('=').and_then(|(key, rest)| {
             let key = key.trim_end_matches(space);
-            let mut cs = key.chars();
-            if !cs.next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
-                || !cs.all(|c| c.is_ascii_alphanumeric() || "_.-".contains(c))
-            {
+            if !valid_key(key) {
                 return None;
             }
             value(rest).map(|v| (key.to_string(), v))

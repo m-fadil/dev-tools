@@ -266,3 +266,25 @@ fn malformed_and_empty_native_timezone_overrides() {
         assert_eq!(times(&r.out), ["2025-01-02T00:00:00+00:00"]);
     }
 }
+
+#[test]
+fn native_timezone_env_is_case_sensitive_and_posix_signed() {
+    for (tz, offset) in [
+        ("asia/jakarta", "+00:00"),
+        ("EUROPE/BERLIN", "+00:00"),
+        ("Factory", "+00:00"),
+        ("Etc/Unknown", "+00:00"),
+        ("SystemV/PST8", "-08:00"),
+        ("GMT+7", "-07:00"),
+        ("GMT-3", "+03:00"),
+        ("Europe/Berlin", "+01:00"),
+    ] {
+        let r = dt_env(
+            &["cron", "--from", "2025-01-01", "-n", "1", "@daily"],
+            b"",
+            &[("TZ", tz)],
+        );
+        assert_eq!(r.code, 0, "{tz}: {}", r.err);
+        assert_eq!(times(&r.out), [format!("2025-01-02T00:00:00{offset}")], "{tz}");
+    }
+}

@@ -30,3 +30,9 @@ fn legacy_compatibility_cases() {
         }
     }
 }
+
+#[test]
+fn size_whitespace_uses_js_set() {
+    assert_eq!(common::dt(&["bytes", "1\u{85}GB"]).code, 2);
+    assert_eq!(common::dt(&["bytes", "1\u{feff}GB", "-t", "B"]).out, "1000000000\n");
+}

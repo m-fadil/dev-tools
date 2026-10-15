@@ -1,4 +1,4 @@
-mod manifest;
+pub(crate) mod manifest;
 
 use std::ffi::OsString;
 use std::io::Write;

@@ -128,7 +128,67 @@ fn is_js_space(c: char) -> bool {
 
 /// Apply the same UTS #46 mapping used by Node's domainToASCII.
 fn domain_to_ascii(value: &str) -> Option<String> {
-    idna::domain_to_ascii(value).ok()
+    let ascii = idna::domain_to_ascii(value).ok()?;
+    ipv4_host(&ascii)
+}
+
+fn ipv4_number(part: &str) -> Option<u64> {
+    if part.is_empty() {
+        return None;
+    }
+    let (digits, radix) = if let Some(h) = part.strip_prefix("0x").or_else(|| part.strip_prefix("0X")) {
+        (h, 16)
+    } else if part.len() > 1 && part.starts_with('0') {
+        (&part[1..], 8)
+    } else {
+        (part, 10)
+    };
+    if digits.is_empty() {
+        return Some(0);
+    }
+    u64::from_str_radix(digits, radix)
+        .ok()
+        .or_else(|| digits.chars().all(|c| c.is_digit(radix)).then_some(u64::MAX))
+}
+
+/// WHATWG host parser step: a host ending in a number is an IPv4 address or invalid.
+fn ipv4_host(host: &str) -> Option<String> {
+    let mut parts: Vec<&str> = host.split('.').collect();
+    if parts.last() == Some(&"") && parts.len() > 1 {
+        parts.pop();
+    }
+    let last = parts.last().copied().unwrap_or("");
+    let numeric = !last.is_empty()
+        && (last.bytes().all(|b| b.is_ascii_digit())
+            || last
+                .strip_prefix("0x")
+                .or_else(|| last.strip_prefix("0X"))
+                .is_some_and(|h| h.bytes().all(|b| b.is_ascii_hexdigit())));
+    if !numeric {
+        return Some(host.to_string());
+    }
+    if parts.len() > 4 {
+        return None;
+    }
+    let mut nums = Vec::new();
+    for p in &parts {
+        nums.push(ipv4_number(p)?);
+    }
+    let (&tail, head) = nums.split_last()?;
+    if head.iter().any(|&n| n > 255) || tail >= 256u64.pow(5 - nums.len() as u32) {
+        return None;
+    }
+    let mut addr = tail;
+    for (i, &n) in head.iter().enumerate() {
+        addr += n * 256u64.pow(3 - i as u32);
+    }
+    Some(format!(
+        "{}.{}.{}.{}",
+        addr >> 24,
+        (addr >> 16) & 255,
+        (addr >> 8) & 255,
+        addr & 255
+    ))
 }
 
 /// Normalize a DNS email domain without accepting URL/userinfo syntax or querying DNS.

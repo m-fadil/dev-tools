@@ -242,3 +242,38 @@ fn surrogate_and_escape_boundaries_preserve_real_unicode() {
         format!("{}{}\n", '\u{ffff}', '\u{e001}')
     );
 }
+#[test]
+fn v8_excerpt_prefix_and_first_utf16_unit() {
+    let r = dt(&["json", r#"{"status":bad,"x":1,"y":2}"#]);
+    assert_eq!(
+        r.err,
+        "invalid: 1:11 Unexpected token 'b', ...\"{\"status\":bad,\"x\":1,\"... is not valid JSON\n"
+    );
+    let input = format!("{}x{}", " ".repeat(10), " ".repeat(10));
+    assert_eq!(
+        dt(&["json", "--check", &input]).err,
+        format!(
+            "invalid: 1:11 Unexpected token 'x', ...\"{}x{}\"... is not valid JSON\n",
+            " ".repeat(10),
+            " ".repeat(9)
+        )
+    );
+    for input in ["😀", "[😀]"] {
+        let r = dt(&["json", "--check", input]);
+        assert!(r.err.contains("Unexpected token '\u{fffd}', "), "{input}: {}", r.err);
+    }
+}
+#[test]
+fn serde_number_marker_key_is_an_ordinary_object() {
+    for input in [
+        r#"{"$serde_json::private::Number":"abc"}"#,
+        r#"{"$serde_json::private::Number":"12"}"#,
+        r#"{"\u0024serde_json::private::Number":"12"}"#,
+    ] {
+        assert_eq!(dt(&["json", "--check", input]).out, "valid\n", "{input}");
+    }
+    assert_eq!(
+        dt(&["json", "-m", r#"{"$serde_json::private::Number":"12"}"#]).out,
+        "{\"$serde_json::private::Number\":\"12\"}\n"
+    );
+}

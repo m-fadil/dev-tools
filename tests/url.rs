@@ -183,3 +183,34 @@ fn file_drive_letters_new_path_encoding_and_javascript_whitespace() {
     assert_eq!(serde_json::from_str::<Value>(&r.out).unwrap()["password"], "p%5E");
     assert_eq!(doc("\u{feff}https://a/\u{feff}")["hostname"], "a");
 }
+#[test]
+fn file_host_kept_before_drive_letter_path() {
+    for (u, host, path) in [("file://host/C|/x", "host", "/C:/x"), ("file://h/C|", "h", "/C:")] {
+        let d = doc(u);
+        assert_eq!(
+            (d["host"].as_str(), d["pathname"].as_str()),
+            (Some(host), Some(path)),
+            "{u}"
+        );
+    }
+}
+#[test]
+fn file_keeps_leading_empty_path_segments() {
+    for (u, path) in [
+        ("file:////x", "//x"),
+        ("file://h//", "//"),
+        ("file:///a/C:/../b", "/a/b"),
+    ] {
+        assert_eq!(doc(u)["pathname"], path, "{u}");
+    }
+}
+#[test]
+fn opaque_path_trailing_space_before_query_or_hash_is_encoded() {
+    for (u, path) in [
+        ("sc:a ?x#y", "a%20"),
+        ("mailto:a b ?q", "a b%20"),
+        ("data:,a  #f", ",a %20"),
+    ] {
+        assert_eq!(doc(u)["pathname"], path, "{u}");
+    }
+}

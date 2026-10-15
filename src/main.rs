@@ -63,6 +63,8 @@ fn menu() -> Result<Option<&'static str>> {
 
 fn run(args: Vec<OsString>) -> Result<()> {
     let first = args.first().and_then(|a| a.to_str().map(str::to_owned));
+    let args = if first.as_deref() == Some("") { Vec::new() } else { args };
+    let first = first.filter(|f| !f.is_empty());
     if matches!(first.as_deref(), Some("-h" | "--help")) {
         println!("{}", help_text());
         return Ok(());

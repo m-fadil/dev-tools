@@ -111,3 +111,19 @@ fn json_values_invalid_lines_and_identical() {
     assert_eq!(r.code, 0);
     assert_eq!(serde_json::from_str::<Value>(&r.out).unwrap()["same"], 1);
 }
+
+#[test]
+fn export_as_key_and_mid_line_separators_invalid() {
+    let (_d, a, b) = files("export = 1\nexport  =1\nA=1\rB=2\nC=x\u{2028}y\n", "export=1\n");
+    let r = dt(&["env", &a, &b]);
+    assert_eq!(r.code, 1);
+    assert!(r.err.contains("2 baris tidak valid"), "{}", r.err);
+    for s in ["a:3:", "a:4:"] {
+        assert!(r.err.contains(s), "{}", r.err);
+    }
+    assert!(
+        !r.err.contains("a:1: baris") && !r.err.contains("a:2: baris"),
+        "{}",
+        r.err
+    );
+}

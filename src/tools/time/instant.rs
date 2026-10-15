@@ -17,10 +17,107 @@ enum ZoneKind {
 }
 #[derive(Clone)]
 pub(crate) struct Zone {
+    /// Zone id; for `invalid_default` zones, the id carried by the Intl error.
     pub name: String,
     pub missing_name: bool,
     pub invalid_default: bool,
     kind: ZoneKind,
+    /// Offset rule used by Date-native local fields when it differs from the Intl zone.
+    native: Option<ZoneKind>,
+}
+
+/// Outcome of interpreting the `TZ` environment variable like Node/ICU does.
+enum EnvZone {
+    Name(String),
+    Zone(Zone),
+}
+
+const SYSTEM_V_STANDARD: [&str; 7] = [
+    "SystemV/AST4",
+    "SystemV/CST6",
+    "SystemV/EST5",
+    "SystemV/HST10",
+    "SystemV/MST7",
+    "SystemV/PST8",
+    "SystemV/YST9",
+];
+
+impl Zone {
+    fn unnamed(kind: ZoneKind) -> Self {
+        Self {
+            name: String::new(),
+            missing_name: true,
+            invalid_default: false,
+            kind,
+            native: None,
+        }
+    }
+    fn invalid(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            invalid_default: true,
+            ..Self::utc()
+        }
+    }
+    /// ICU matches `TZ` case-sensitively; anything it cannot name either falls
+    /// back to the system zone or leaves the Intl zone name undefined.
+    fn from_env(tz: &str, system: impl Fn() -> String) -> EnvZone {
+        if tz.is_empty() {
+            return EnvZone::Zone(Self::invalid("Etc/Unknown"));
+        }
+        let id = tz.strip_prefix(':').unwrap_or(tz);
+        let id = id
+            .strip_prefix("posix/")
+            .or_else(|| id.strip_prefix("right/"))
+            .unwrap_or(id);
+        if id == "Factory" || id == "Etc/Unknown" {
+            return EnvZone::Zone(Self::invalid("Etc/Unknown"));
+        }
+        if jiff_tzdb::get(id).is_some_and(|(name, _)| name == id) {
+            return EnvZone::Name(id.to_string());
+        }
+        if SYSTEM_V_STANDARD.contains(&tz) {
+            return EnvZone::Name(tz.to_string());
+        }
+        let split = tz.find(|c: char| c.is_ascii_digit() || c == ',').unwrap_or(tz.len());
+        let (prefix, rest) = tz.split_at(split);
+        if !rest.is_empty() && !(rest.len() <= 2 && rest.bytes().all(|b| b.is_ascii_digit())) {
+            return EnvZone::Name(system());
+        }
+        // `GMT+7` is a custom zone for Intl (sign kept, `+07:00`), while libc
+        // (and so Date) reads it as POSIX, i.e. the opposite direction.
+        let sign = prefix.bytes().last().filter(|b| matches!(b, b'+' | b'-'));
+        let letters = if sign.is_some() {
+            &prefix[..prefix.len() - 1]
+        } else {
+            prefix
+        };
+        let native_hours = if !rest.is_empty() && letters.len() >= 3 && letters.bytes().all(|b| b.is_ascii_alphabetic())
+        {
+            let hours = rest.parse::<i32>().unwrap_or(0).min(24);
+            Some(if sign == Some(b'-') { hours } else { -hours } * 3600)
+        } else {
+            None
+        };
+        let native = ZoneKind::Fixed(native_hours.unwrap_or(0));
+        if let (Some(sign), true, Some(seconds)) = (sign, letters.eq_ignore_ascii_case("gmt"), native_hours) {
+            let hours = rest.parse::<i32>().unwrap_or(0);
+            if hours == 0 {
+                return EnvZone::Zone(Self::invalid(""));
+            }
+            if hours < 24 {
+                let east = sign == b'+';
+                return EnvZone::Zone(Self {
+                    name: format!("{}{hours:02}:00", if east { '+' } else { '-' }),
+                    missing_name: false,
+                    invalid_default: false,
+                    kind: ZoneKind::Fixed(if east { hours } else { -hours } * 3600),
+                    native: Some(ZoneKind::Fixed(seconds)),
+                });
+            }
+        }
+        EnvZone::Zone(Self::unnamed(native))
+    }
 }
 
 impl Zone {
@@ -29,38 +126,17 @@ impl Zone {
         let name = match requested {
             Some(name) => name.to_string(),
             None => match std::env::var("TZ") {
-                Ok(name) if name.is_empty() => {
-                    return Ok(Self {
-                        invalid_default: true,
-                        ..Self::utc()
-                    });
-                }
-                Ok(name) if name.get(..8).is_some_and(|p| p.eq_ignore_ascii_case("SystemV/")) => system(),
-                Ok(name) => {
-                    let name = name.trim_start_matches(':').to_string();
-                    if jiff_tzdb::get(&name).is_none() || name.eq_ignore_ascii_case("Factory") {
-                        // ICU exposes no resolved zone name for unrecognized
-                        // overrides. Date/Intl still use the native POSIX zone.
-                        let zone = jiff::tz::TimeZone::posix(&name).unwrap_or(jiff::tz::TimeZone::UTC);
-                        return Ok(Self {
-                            name: String::new(),
-                            missing_name: true,
-                            invalid_default: false,
-                            kind: ZoneKind::Named(zone),
-                        });
-                    }
-                    name
-                }
+                Ok(tz) => match Self::from_env(&tz, system) {
+                    EnvZone::Name(name) => name,
+                    EnvZone::Zone(zone) => return Ok(zone),
+                },
                 Err(_) => system(),
             },
         };
         let name = if requested.is_none() {
-            if name.eq_ignore_ascii_case("GMT") {
+            if name == "GMT" {
                 "+00:00".to_string()
-            } else if let Some((_, canonical)) = super::zones::ALIASES
-                .iter()
-                .find(|(alias, _)| alias.eq_ignore_ascii_case(&name))
-            {
+            } else if let Some((_, canonical)) = super::zones::ALIASES.iter().find(|(alias, _)| *alias == name) {
                 (*canonical).to_string()
             } else {
                 jiff_tzdb::get(&name)
@@ -90,6 +166,7 @@ impl Zone {
                         name,
                         missing_name: false,
                         invalid_default: false,
+                        native: None,
                     });
                 }
             }
@@ -122,6 +199,7 @@ impl Zone {
                 kind: ZoneKind::SystemV { standard, daylight },
                 missing_name: false,
                 invalid_default: false,
+                native: None,
             });
         }
         let alias = match name.to_ascii_lowercase().as_str() {
@@ -146,6 +224,7 @@ impl Zone {
             kind: ZoneKind::Named(zone),
             missing_name: false,
             invalid_default: false,
+            native: None,
         })
     }
     pub(crate) fn utc() -> Self {
@@ -154,12 +233,16 @@ impl Zone {
             kind: ZoneKind::Named(jiff::tz::TimeZone::UTC),
             missing_name: false,
             invalid_default: false,
+            native: None,
         }
     }
     pub(crate) fn local() -> Result<Self> {
         let mut zone = Self::resolve(None)?;
         // Cron uses Date's native local fields, not an Intl zone-name formatter.
         zone.invalid_default = false;
+        if let Some(kind) = zone.native.take() {
+            zone.kind = kind;
+        }
         Ok(zone)
     }
     pub(crate) fn offset(&self, ms: i64) -> i64 {

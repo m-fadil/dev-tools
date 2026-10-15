@@ -120,13 +120,37 @@ fn given_options(args: &[OsString]) -> Vec<&'static str> {
     let Ok(matches) = Args::command().try_get_matches_from(argv) else {
         return Vec::new();
     };
-    let mut found: Vec<(usize, &'static str)> = OPTION_IDS
+    let present: Vec<&'static str> = OPTION_IDS
         .iter()
         .filter(|(id, _)| matches.value_source(id) == Some(ValueSource::CommandLine))
-        .map(|(id, name)| (matches.index_of(id).unwrap_or(usize::MAX), *name))
+        .map(|(_, name)| *name)
         .collect();
-    found.sort_by_key(|&(i, _)| i);
-    found.into_iter().map(|(_, n)| n).collect()
+    // clap resets an overridden option's index to its last occurrence, so find first appearances in the raw args.
+    let mut order: Vec<&'static str> = Vec::new();
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        let Some(arg) = arg.to_str() else { continue };
+        if arg == "--" {
+            break;
+        }
+        let (name, inline) = match arg.strip_prefix("--") {
+            Some(long) => match long.split_once('=') {
+                Some((n, _)) => (n, true),
+                None => (long, false),
+            },
+            None if arg == "-f" || (arg.starts_with("-f") && arg.len() > 2) => ("file", arg.len() > 2),
+            None => continue,
+        };
+        if let Some((_, canonical)) = OPTION_IDS.iter().find(|(_, n)| *n == name) {
+            if present.contains(canonical) && !order.contains(canonical) {
+                order.push(canonical);
+            }
+            if !inline && matches!(*canonical, "file" | "sep" | "top" | "min-length") {
+                iter.next();
+            }
+        }
+    }
+    order
 }
 
 fn emit(line: impl AsRef<str>) {

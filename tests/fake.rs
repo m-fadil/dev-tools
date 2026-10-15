@@ -1404,3 +1404,17 @@ fn invalid_options() {
         }
     }
 }
+
+#[test]
+fn email_domain_whatwg_ipv4() {
+    for (d, want) in [("127.1", "127.0.0.1"), ("0x7f.1", "127.0.0.1"), ("1.2.3", "1.2.0.3")] {
+        let r = dt(&["fake", "email", "--domain", d, "-c", "1", "--seed", "1"]);
+        assert_eq!(r.code, 0, "{d}: {}", r.err);
+        assert!(r.out.trim_end().ends_with(&format!("@{want}")), "{d}: {}", r.out);
+    }
+    for d in ["foo.1", "example.123"] {
+        let r = dt(&["fake", "email", "--domain", d]);
+        assert_eq!(r.code, 2, "{d}");
+        assert!(r.err.contains("Domain email tidak valid"), "{d}: {}", r.err);
+    }
+}

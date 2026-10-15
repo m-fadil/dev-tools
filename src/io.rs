@@ -6,8 +6,18 @@ use crate::errors::{CliError, Result, usage};
 
 /// Parses tool arguments. `--help` prints the (verbatim legacy) help and exits 0.
 pub fn parse<A: clap::Parser>(tool: &str, args: Vec<OsString>) -> Result<A> {
+    use clap::ArgAction;
     let argv = std::iter::once(OsString::from(format!("dt {tool}"))).chain(args);
-    match A::try_parse_from(argv) {
+    // Node's parseArgs lets a repeated boolean flag pass; clap's SetTrue rejects it by default.
+    let command = A::command().mut_args(|arg| {
+        if matches!(arg.get_action(), ArgAction::SetTrue) {
+            let id = arg.get_id().clone();
+            arg.overrides_with(id)
+        } else {
+            arg
+        }
+    });
+    match command.try_get_matches_from(argv).and_then(|m| A::from_arg_matches(&m)) {
         Ok(a) => Ok(a),
         Err(e) if e.kind() == clap::error::ErrorKind::DisplayHelp => {
             let _ = write!(std::io::stdout(), "{e}");
@@ -15,6 +25,25 @@ pub fn parse<A: clap::Parser>(tool: &str, args: Vec<OsString>) -> Result<A> {
         }
         Err(e) => Err(usage(e.to_string().trim_end())),
     }
+}
+
+/// Reads a file, reporting failures in Node's `CODE: text, open 'path'` form.
+fn read_file(path: &Path) -> Result<Vec<u8>> {
+    std::fs::read(path).map_err(|e| {
+        let code = crate::tools::checksum::manifest::io_error(&e).code;
+        let text = match code {
+            Some("ENOENT") => Some("no such file or directory, open"),
+            Some("EACCES") => Some("permission denied, open"),
+            Some("EISDIR") => return CliError::Failed("EISDIR: illegal operation on a directory, read".into()),
+            Some("ENOTDIR") => Some("not a directory, open"),
+            Some("ELOOP") => Some("too many symbolic links encountered, open"),
+            _ => None,
+        };
+        match (code, text) {
+            (Some(code), Some(text)) => CliError::Failed(format!("{code}: {text} '{}'", path.display())),
+            _ => CliError::from(e),
+        }
+    })
 }
 
 /// Validates an option value against an allowed list; `None` yields the fallback.
@@ -51,7 +80,7 @@ pub fn read_input(positionals: &[String], file: Option<&Path>, prompt: &str) -> 
         return Err(usage("Gunakan teks atau --file, bukan keduanya."));
     }
     if let Some(f) = file {
-        return Ok(std::fs::read(f)?);
+        return read_file(f);
     }
     if !positionals.is_empty() {
         return Ok(positionals.join(" ").into_bytes());

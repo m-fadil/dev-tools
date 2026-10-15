@@ -4,6 +4,9 @@
 pub struct Url {
     inner: ::url::Url,
     ascii_host: Option<String>,
+    /// Node keeps a non-empty file host and leading empty path segments that the crate drops.
+    file_host: Option<String>,
+    file_path: Option<String>,
 }
 
 pub fn default_port(scheme: &str) -> Option<u16> {
@@ -39,9 +42,12 @@ fn percent_decode_ascii(text: &str) -> Option<String> {
 
 pub fn parse(text: &str) -> Option<Url> {
     if let Ok(inner) = ::url::Url::parse(text) {
+        let (file_host, file_path) = file_fixups(text, &inner);
         return Some(Url {
             inner,
             ascii_host: None,
+            file_host,
+            file_path,
         });
     }
     // Node bypasses UTS #46 for ASCII domains, including ASCII ACE labels. The
@@ -92,10 +98,100 @@ pub fn parse(text: &str) -> Option<Url> {
         .join(".");
     let replacement = format!("{}{neutral}{}", &clean[..host_start], &clean[host_end..]);
     let inner = ::url::Url::parse(&replacement).ok()?;
+    let file_path = file_fixups(&replacement, &inner).1;
     Some(Url {
         inner,
         ascii_host: Some(host),
+        file_host: None,
+        file_path,
     })
+}
+
+fn is_slash(b: u8) -> bool {
+    matches!(b, b'/' | b'\\')
+}
+
+/// Corrects `file:` quirks of the crate: a host followed by a drive-letter path is dropped,
+/// and leading empty path segments are collapsed. Returns (host, path) overrides.
+fn file_fixups(text: &str, inner: &::url::Url) -> (Option<String>, Option<String>) {
+    if inner.scheme() != "file" {
+        return (None, None);
+    }
+    let clean: String = text
+        .trim_matches(|c: char| c <= '\u{20}')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\r' | '\n'))
+        .collect();
+    let Some(rest) = clean.get(5..).filter(|_| clean[..5].eq_ignore_ascii_case("file:")) else {
+        return (None, None);
+    };
+    let b = rest.as_bytes();
+    let (hostpart, path_text) = if b.len() >= 2 && is_slash(b[0]) && is_slash(b[1]) {
+        let end = rest[2..].find(['/', '\\', '?', '#']).map_or(rest.len(), |n| n + 2);
+        (&rest[2..end], rest[end..].to_string())
+    } else if b.first().is_some_and(|&c| is_slash(c)) {
+        ("", rest.to_string())
+    } else {
+        ("", format!("/{rest}"))
+    };
+    let hb = hostpart.as_bytes();
+    let drive_host = hb.len() == 2 && hb[0].is_ascii_alphabetic() && matches!(hb[1], b':' | b'|');
+    let file_host = if hostpart.is_empty() || drive_host || inner.host_str().is_some() {
+        None
+    } else {
+        ::url::Url::parse(&format!("file://{hostpart}/"))
+            .ok()
+            .and_then(|u| u.host_str().map(str::to_string))
+            .filter(|h| !h.is_empty())
+    };
+    let path_text = if drive_host {
+        format!("/{hostpart}{path_text}")
+    } else {
+        path_text
+    };
+    (file_host, Some(file_path(&path_text)))
+}
+
+fn is_drive(seg: &str) -> bool {
+    let b = seg.as_bytes();
+    b.len() == 2 && b[0].is_ascii_alphabetic() && matches!(b[1], b':' | b'|')
+}
+
+/// WHATWG file path state (Node/ada semantics: no host clearing, no leading-empty collapse).
+fn file_path(text: &str) -> String {
+    let end = text.find(['?', '#']).unwrap_or(text.len());
+    let text = &text[..end];
+    let text = text.strip_prefix(['/', '\\']).unwrap_or(text);
+    let mut path: Vec<String> = Vec::new();
+    let segs: Vec<&str> = text.split(['/', '\\']).collect();
+    for (i, seg) in segs.iter().enumerate() {
+        let last = i + 1 == segs.len();
+        let lower = seg.to_ascii_lowercase();
+        if matches!(lower.as_str(), ".." | ".%2e" | "%2e." | "%2e%2e") {
+            let protected = path.len() == 1 && is_drive(&path[0]) && path[0].ends_with(':');
+            if !protected {
+                path.pop();
+            }
+            if last {
+                path.push(String::new());
+            }
+        } else if matches!(lower.as_str(), "." | "%2e") {
+            if last {
+                path.push(String::new());
+            }
+        } else {
+            let seg = if path.is_empty() && is_drive(seg) {
+                format!("{}:", &seg[..1])
+            } else {
+                (*seg).to_string()
+            };
+            let encoded = ::url::Url::parse(&format!("http://x/{seg}/"))
+                .map(|u| u.path()[1..u.path().len() - 1].to_string())
+                .unwrap_or(seg);
+            path.push(encoded);
+        }
+    }
+    format!("/{}", path.join("/"))
 }
 
 impl Url {
@@ -111,6 +207,7 @@ impl Url {
     pub fn hostname(&self) -> String {
         self.ascii_host
             .clone()
+            .or_else(|| self.file_host.clone())
             .unwrap_or_else(|| self.inner.host_str().unwrap_or("").to_string())
     }
     pub fn host_text(&self) -> String {
@@ -125,9 +222,18 @@ impl Url {
     }
     pub fn pathname(&self) -> String {
         let mut path = if self.inner.cannot_be_a_base() {
-            self.inner.path().to_string()
+            let mut p = self.inner.path().to_string();
+            // Node percent-encodes one trailing space of an opaque path before `?`/`#`.
+            if p.ends_with(' ') && (self.inner.query().is_some() || self.inner.fragment().is_some()) {
+                p.pop();
+                p.push_str("%20");
+            }
+            p
         } else {
-            self.inner.path().replace('^', "%5E")
+            self.file_path
+                .as_deref()
+                .unwrap_or(self.inner.path())
+                .replace('^', "%5E")
         };
         let bytes = path.as_bytes();
         if self.inner.scheme() == "file"

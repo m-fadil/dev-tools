@@ -86,7 +86,8 @@ pub fn encode(data: &[u8], codec: Codec) -> String {
 
 /// Strict decode. base64/base64url/hex ignore all whitespace.
 pub fn decode(text: &str, codec: Codec) -> Result<Vec<u8>, String> {
-    let squash = || text.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+    use crate::tools::number::jstext::{is_js_space, js_trim};
+    let squash = || text.chars().filter(|c| !is_js_space(*c)).collect::<String>();
     match codec {
         Codec::Base64 | Codec::Base64Url => {
             let value = squash();
@@ -101,7 +102,7 @@ pub fn decode(text: &str, codec: Codec) -> Result<Vec<u8>, String> {
             engine(codec == Codec::Base64Url).decode(body).map_err(|_| bad())
         }
         Codec::Hex => hex::decode(squash()).map_err(|_| "Input bukan hex yang valid.".to_string()),
-        Codec::Url => decode_url(text.trim()),
+        Codec::Url => decode_url(js_trim(text)),
     }
 }
 
