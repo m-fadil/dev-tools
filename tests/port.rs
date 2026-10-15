@@ -23,7 +23,7 @@ fn check_open_closed_and_json() {
     let closed = dt(&["port", "check", "--timeout", "10000", &number]);
     assert_eq!(closed.code, 1, "{}", closed.err);
     assert_eq!(closed.out, format!("127.0.0.1:{port} tertutup\n"));
-    let closed_json = dt(&["port", "check", "--json", &number]);
+    let closed_json = dt(&["port", "check", "--json", "--timeout", "10000", &number]);
     assert_eq!(closed_json.code, 1);
     assert_eq!(
         serde_json::from_str::<Value>(&closed_json.out).expect("JSON"),
