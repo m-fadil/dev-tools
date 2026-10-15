@@ -29,6 +29,12 @@ pub fn parse<A: clap::Parser>(tool: &str, args: Vec<OsString>) -> Result<A> {
 
 /// Reads a file, reporting failures in Node's `CODE: text, open 'path'` form.
 fn read_file(path: &Path) -> Result<Vec<u8>> {
+    // Windows reports a directory as access denied; Node reports EISDIR on every platform.
+    if std::fs::metadata(path).is_ok_and(|m| m.is_dir()) {
+        return Err(CliError::Failed(
+            "EISDIR: illegal operation on a directory, read".into(),
+        ));
+    }
     std::fs::read(path).map_err(|e| {
         let code = crate::tools::checksum::manifest::io_error(&e).code;
         let text = match code {

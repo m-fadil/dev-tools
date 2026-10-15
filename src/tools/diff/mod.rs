@@ -68,6 +68,10 @@ fn read_error(path: &str, error: io::Error) -> CliError {
 }
 
 fn open_file(path: &str) -> Result<File> {
+    // Windows refuses to open a directory (access denied), so detect it up front.
+    if std::fs::metadata(path).is_ok_and(|m| m.is_dir()) {
+        return Err(CliError::Failed(format!("Bukan file (direktori): {path}")));
+    }
     let file = File::open(path).map_err(|e| read_error(path, e))?;
     if file.metadata().map_err(|e| read_error(path, e))?.is_dir() {
         return Err(CliError::Failed(format!("Bukan file (direktori): {path}")));
