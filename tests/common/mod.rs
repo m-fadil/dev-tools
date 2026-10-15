@@ -56,3 +56,12 @@ pub fn dt_in(args: &[&str], stdin: &[u8]) -> Out {
 pub fn dt(args: &[&str]) -> Out {
     dt_in(args, b"")
 }
+
+/// `canonicalize` without the Windows verbatim `\\?\` prefix, which git and many tools reject.
+pub fn canonical(path: &std::path::Path) -> std::path::PathBuf {
+    let resolved = path.canonicalize().unwrap();
+    match resolved.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
+        Some(plain) => std::path::PathBuf::from(plain),
+        None => resolved,
+    }
+}

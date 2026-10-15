@@ -150,7 +150,7 @@ impl Fixture {
 
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
-    let root = dir.path().canonicalize().unwrap();
+    let root = common::canonical(dir.path());
     let config = root.join("gitconfig");
     std::fs::write(
         &config,

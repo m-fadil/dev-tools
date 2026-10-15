@@ -42,7 +42,7 @@ fn setup() -> Cli {
 
 impl Cli {
     fn path(&self) -> PathBuf {
-        self.dir.path().canonicalize().unwrap()
+        common::canonical(self.dir.path())
     }
 
     /// run the CLI with no terminal at all, as cron/CI would

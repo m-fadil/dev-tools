@@ -97,7 +97,18 @@ fn main() {
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
     }
-    let code = match run(std::env::args_os().skip(1).collect()) {
+    // Windows main threads only get 1 MiB; deeply nested input (math, json) needs more headroom.
+    let args: Vec<OsString> = std::env::args_os().skip(1).collect();
+    let result = std::thread::Builder::new()
+        .stack_size(256 * 1024 * 1024)
+        .spawn(move || run(args))
+        .map_err(CliError::from)
+        .and_then(|handle| {
+            handle
+                .join()
+                .unwrap_or_else(|_| Err(CliError::Failed("Terjadi kesalahan internal.".into())))
+        });
+    let code = match result {
         Ok(()) => 0,
         Err(CliError::Usage(m)) => {
             eprintln!("{m}\n\nGunakan dt --help atau dt <tool> --help.");

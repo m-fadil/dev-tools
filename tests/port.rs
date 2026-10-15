@@ -20,7 +20,7 @@ fn check_open_closed_and_json() {
         json!({"host":"127.0.0.1","port":port,"status":"open"})
     );
     drop(server);
-    let closed = dt(&["port", "check", &number]);
+    let closed = dt(&["port", "check", "--timeout", "10000", &number]);
     assert_eq!(closed.code, 1, "{}", closed.err);
     assert_eq!(closed.out, format!("127.0.0.1:{port} tertutup\n"));
     let closed_json = dt(&["port", "check", "--json", &number]);
