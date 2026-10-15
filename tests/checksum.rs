@@ -122,6 +122,8 @@ fn mismatch_missing_malformed_and_json_statuses() {
     assert_eq!(r.code, 0);
     assert_eq!(doc(&r)["passed"], true);
 }
+// "abc.txt/x" is ENOTDIR (an error) on Unix but a plain "not found" on Windows.
+#[cfg(unix)]
 #[test]
 fn error_entries_do_not_hide_other_results() {
     let d = fixture();

@@ -122,7 +122,7 @@ impl Zone {
 
 impl Zone {
     pub(crate) fn resolve(requested: Option<&str>) -> Result<Self> {
-        let system = || iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".into());
+        let system = system_zone_name;
         let name = match requested {
             Some(name) => name.to_string(),
             None => match std::env::var("TZ") {
@@ -493,4 +493,17 @@ pub(crate) fn relative(ms: i64, now: i64) -> String {
         (d / 365, "tahun")
     };
     format!("{n} {unit} {}", if diff < 0 { "lalu" } else { "lagi" })
+}
+
+/// Host zone. CoreFoundation (used by `iana_time_zone` on macOS) honours `TZ`, but the fallback
+/// for unusable `TZ` values must be the zone configured for the host, so read `/etc/localtime`.
+fn system_zone_name() -> String {
+    #[cfg(target_os = "macos")]
+    if let Ok(target) = std::fs::read_link("/etc/localtime")
+        && let Some(name) = target.to_string_lossy().split("zoneinfo/").nth(1)
+        && !name.is_empty()
+    {
+        return name.to_string();
+    }
+    iana_time_zone::get_timezone().unwrap_or_else(|_| "UTC".into())
 }
