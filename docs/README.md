@@ -3,7 +3,7 @@
 ## Penggunaan
 
 - [syncgit](syncgit.md) — sinkronisasi commit dan tag antar remote Git dengan pemetaan identitas.
-- [Utilitas](utilities.md) — hash, encrypt, encode, decode, dan uuid/token.
+- [Utilitas](utilities.md) — hash, encrypt, encode, decode, dan random (uuid/token).
 - [password](password.md) — password acak dengan kelas karakter terjamin.
 - [checksum](checksum.md) — hitung dan verifikasi checksum file.
 - [jwt](jwt.md) — decode dan verifikasi JWT.

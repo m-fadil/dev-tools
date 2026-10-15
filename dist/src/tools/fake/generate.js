@@ -1,4 +1,4 @@
-import { COMPANY_WORDS, COUNTRIES, DATA, EMAIL_DOMAINS, TLDS } from './data.js';
+import { COMPANY_WORDS, COUNTRIES, DATA, TLDS } from './data.js';
 import { pick, randInt } from './rng.js';
 import { generate as lorem } from '../lorem/text.js';
 export const TYPES = [
@@ -53,7 +53,7 @@ const makers = {
     email: (p) => {
         const [f, l] = fullName(p);
         const n = p.rng() < 0.4 ? String(randInt(p.rng, 1, 99)) : '';
-        return `${slug(f)}.${slug(l)}${n}@${pick(p.rng, EMAIL_DOMAINS)}`;
+        return `${slug(f)}.${slug(l)}${n}@${p.emailDomain}`;
     },
     username: (p) => {
         const [f, l] = fullName(p);

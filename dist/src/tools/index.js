@@ -29,7 +29,7 @@ import { syncgit } from './syncgit/index.js';
 import { textTool } from './text/index.js';
 import { timeTool } from './time/index.js';
 import { urlTool } from './url/index.js';
-import { uuid } from './uuid/index.js';
+import { randomTool } from './random/index.js';
 // Registered tools share the menu, help, and command dispatch.
 export const tools = [
     syncgit,
@@ -38,7 +38,7 @@ export const tools = [
     encryptTool,
     encodeTool,
     decodeTool,
-    uuid,
+    randomTool,
     passwordTool,
     jwtTool,
     jsonTool,

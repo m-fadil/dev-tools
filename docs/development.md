@@ -88,7 +88,7 @@ dan image tidak dipublikasikan. Push branch saja tidak menerbitkan rilis.
 Job `image` checkout SHA event yang sama dan memublikasikan manifest
 multi-arsitektur (`linux/amd64`, `linux/arm64`) ke `ghcr.io/m-fadil/dev-tools`
 memakai `GITHUB_TOKEN` dengan izin `packages: write`. Metadata image berasal
-dari tag: misalnya `v0.1.1` menghasilkan `0.1.1`, `0.1`, `0`, serta `latest`
+dari tag: misalnya `v0.4.0` menghasilkan `0.4.0`, `0.4`, `0`, serta `latest`
 untuk rilis stabil. Prerelease tidak memperbarui `latest`.
 Build menyertakan provenance dan SBOM, dengan attestation di penyimpanan GitHub.
 Visibilitas package GHCR diatur di GitHub; ubah menjadi public bila image harus
@@ -118,7 +118,7 @@ secara eksplisit di stage build, dan menyalin hasilnya ke stage runtime.
 Verifikasi attestation:
 
 ```bash
-gh attestation verify --owner m-fadil oci://ghcr.io/m-fadil/dev-tools:0.1.1
+gh attestation verify --owner m-fadil oci://ghcr.io/m-fadil/dev-tools:0.4.0
 ```
 
 Setelah rilis baru memperbarui branch distribusi, instalasi siap pakai:
@@ -127,5 +127,7 @@ Setelah rilis baru memperbarui branch distribusi, instalasi siap pakai:
 npm install -g github:m-fadil/dev-tools#release
 npx --package=github:m-fadil/dev-tools#release dt --help
 ```
+
+Jangan memindahkan atau membuat ulang tag yang sudah dipublikasikan.
 
 [Kembali ke dokumentasi](README.md).

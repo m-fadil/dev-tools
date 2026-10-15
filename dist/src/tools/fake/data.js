@@ -122,6 +122,5 @@ export const COMPANY_WORDS = [
     'Lumen',
     'Cascade',
 ];
-export const EMAIL_DOMAINS = ['example.com', 'example.org', 'example.net'];
 export const TLDS = ['com', 'org', 'net'];
 //# sourceMappingURL=data.js.map
