@@ -4,8 +4,36 @@ Kumpulan alat praktis untuk pekerjaan sehari-hari, cukup dengan perintah `dt`.
 
 ## Instalasi
 
-Pilih salah satu: kompilasi dari sumber dengan Cargo, unduh binary siap pakai,
-atau gunakan Docker. Untuk `syncgit` diperlukan [Git](https://git-scm.com/).
+Pilih salah satu: skrip pemasang, kompilasi dari sumber dengan Cargo, unduh
+binary siap pakai, atau gunakan Docker. Untuk `syncgit` diperlukan [Git](https://git-scm.com/).
+
+### Skrip pemasang (Linux dan macOS)
+
+Mengunduh binary sesuai OS dan arsitektur, memverifikasi checksum, lalu
+memasangnya ke `~/.local/bin`:
+
+```bash
+curl -fsSL https://github.com/m-fadil/dev-tools/releases/latest/download/install.sh | sh
+```
+
+`releases/latest` selalu mengarah ke rilis stabil terbaru. Untuk versi tertentu,
+pakai skrip dari rilis itu; versi tersebut menjadi default-nya:
+
+```bash
+curl -fsSL https://github.com/m-fadil/dev-tools/releases/download/v1.0.0/install.sh | sh
+```
+
+Pengaturan lewat variabel lingkungan:
+
+| Variabel | Fungsi |
+| --- | --- |
+| `DT_VERSION` | Versi yang dipasang, mis. `v1.0.0` atau `1.0.0-rc.1` (juga untuk prarilis). |
+| `DT_INSTALL_DIR` | Folder tujuan (default `~/.local/bin`). |
+
+Versi juga bisa diberikan sebagai argumen: `... | sh -s -- v1.0.0`. Jalankan
+ulang untuk memperbarui. Di Linux yang dipasang adalah build musl (statis).
+Pastikan `~/.local/bin` ada di `PATH`. Di Windows, unduh arsip `.zip` dari
+halaman rilis.
 
 ### Dengan Cargo
 
@@ -106,8 +134,5 @@ Untuk panduan setiap alat, jalankan `dt <nama> --help`, misalnya `dt encrypt --h
 
 Contoh lengkap tersedia di [dokumentasi](docs/README.md).
 
-Untuk menghapus instalasi:
-
-```bash
-cargo uninstall dev-tools
-```
+Untuk menghapus instalasi: `rm ~/.local/bin/dt` (skrip pemasang) atau
+`cargo uninstall dev-tools` (Cargo).

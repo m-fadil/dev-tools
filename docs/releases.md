@@ -6,7 +6,7 @@
 `cargo install --git https://github.com/m-fadil/dev-tools --locked`;
 crate tidak diterbitkan ke crates.io. Distribusi npm dan branch distribusi
 `release` dihentikan. Rilis menyediakan binary untuk delapan target Linux,
-macOS, dan Windows; image Docker tetap tersedia dan membungkus binary musl.
+macOS, dan Windows, serta skrip pemasang `install.sh`; image Docker tetap tersedia dan membungkus binary musl.
 
 ### Perubahan yang tidak kompatibel
 

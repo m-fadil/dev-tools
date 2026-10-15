@@ -92,7 +92,9 @@ pada event tag dan menjalankan job berikut:
    Penamaan arsip ini dipakai oleh `[package.metadata.binstall]` di `Cargo.toml`;
    ubah keduanya bersamaan.
 3. `publish`: membuat GitHub release (prerelease bila tag memuat `-`), melampirkan
-   semua arsip dan `SHA256SUMS`, dengan attestation provenance. Bila release sudah
+   semua arsip, `install.sh` (salinan `install.sh` repo dengan `DEFAULT_VERSION`
+   diisi tag rilis; `releases/latest/download/install.sh` melayani rilis stabil
+   terbaru) dan `SHA256SUMS`, dengan attestation provenance. Bila release sudah
    ada (rerun), berkas diunggah ulang dengan `--clobber`.
 4. `image`: membungkus binary musl amd64/arm64 ke image multi-arsitektur
    `ghcr.io/m-fadil/dev-tools` (`Dockerfile`, tanpa kompilasi di Docker)

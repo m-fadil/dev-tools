@@ -123,12 +123,23 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           pattern: dist-*
           merge-multiple: true
+      - name: installer with pinned default version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir baked
+          sed "s|^DEFAULT_VERSION=.*|DEFAULT_VERSION=\"$TAG\"|" install.sh > baked/install.sh
+          grep -qx "DEFAULT_VERSION=\"$TAG\"" baked/install.sh
+          chmod +x baked/install.sh
       - name: checksums
-        run: cat dt-*.sha256 > SHA256SUMS
+        run: |
+          cat dt-*.sha256 > SHA256SUMS
+          (cd baked && sha256sum install.sh) >> SHA256SUMS
       - name: attest provenance
         uses: actions/attest-build-provenance@v4
         with:
@@ -142,11 +153,11 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dt-* SHA256SUMS --clobber
+            gh release upload "$TAG" dt-* baked/install.sh SHA256SUMS --clobber
           else
             flags=""
             case "$TAG" in *-*) flags="--prerelease" ;; esac
-            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes $flags dt-* SHA256SUMS
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes $flags dt-* baked/install.sh SHA256SUMS
           fi
 
   image:

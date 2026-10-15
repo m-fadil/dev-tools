@@ -28,6 +28,21 @@ jobs:
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked --no-fail-fast
 
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck install.sh
+      - name: pinned default version is substituted
+        run: |
+          sed 's|^DEFAULT_VERSION=.*|DEFAULT_VERSION="v9.9.9"|' install.sh > pinned.sh
+          grep -qx 'DEFAULT_VERSION="v9.9.9"' pinned.sh
+          sh -n pinned.sh
+      - name: installs the latest published binary and verifies it
+        run: |
+          DT_VERSION=v1.0.0-rc.1 DT_INSTALL_DIR="$RUNNER_TEMP/bin" sh install.sh
+          "$RUNNER_TEMP/bin/dt" hash abc
+
   container:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
