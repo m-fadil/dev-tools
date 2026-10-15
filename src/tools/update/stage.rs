@@ -21,6 +21,7 @@ impl TempDir {
         let base = std::env::temp_dir();
         for _ in 0..8 {
             let path = base.join(format!("dt-update-{}-{}", std::process::id(), random_hex()?));
+            #[cfg_attr(not(unix), allow(unused_mut))]
             let mut builder = fs::DirBuilder::new();
             #[cfg(unix)]
             std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
