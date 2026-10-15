@@ -128,3 +128,119 @@ fn json_shapes_and_usage_errors() {
     }
     assert_eq!(dt(&["uuid"]).code, 2);
 }
+
+const CROCKFORD: &str = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+fn ulid_ms(s: &str) -> u128 {
+    s[..10]
+        .chars()
+        .fold(0u128, |acc, c| acc * 32 + CROCKFORD.find(c).unwrap() as u128)
+}
+
+#[test]
+fn ulid_format_timestamp_and_monotonic_order() {
+    let before = now();
+    let v = lines(&["random", "ulid", "-c", "1000"]);
+    let after = now();
+    assert_eq!(v.len(), 1000);
+    for s in &v {
+        check(s, "^[0-9A-HJKMNP-TV-Z]{26}$");
+        assert!(
+            s.as_bytes()[0] <= b'7',
+            "48-bit timestamp must not overflow 128 bits: {s}"
+        );
+    }
+    assert!(ulid_ms(&v[0]) >= before - 1 && ulid_ms(&v[999]) <= after + 1000);
+    assert!(v.windows(2).all(|w| w[0] < w[1]), "must be strictly increasing");
+    assert_eq!(lines(&["random", "ulid"]).len(), 1);
+}
+
+#[test]
+fn ulid_lowercase_and_json() {
+    for s in lines(&["random", "ulid", "-c", "5", "--lowercase"]) {
+        check(&s, "^[0-9a-hjkmnp-tv-z]{26}$");
+    }
+    let j: serde_json::Value = serde_json::from_str(&dt(&["random", "ulid", "--json", "-c", "3"]).out).unwrap();
+    assert_eq!(j["type"], "ulid");
+    assert_eq!(j.as_object().unwrap().len(), 2);
+    let values = j["values"].as_array().unwrap();
+    assert_eq!(values.len(), 3);
+    check(values[0].as_str().unwrap(), "^[0-9A-Z]{26}$");
+}
+
+#[test]
+fn nanoid_defaults_and_custom_alphabet() {
+    let s = lines(&["random", "nanoid"]);
+    assert_eq!(s.len(), 1);
+    check(&s[0], "^[A-Za-z0-9_-]{21}$");
+    let v = lines(&["random", "nanoid", "-l", "256", "-c", "3"]);
+    assert_eq!(v.len(), 3);
+    assert!(v.iter().all(|x| x.len() == 256));
+    assert_ne!(v[0], v[1]);
+    for s in lines(&["random", "nanoid", "-l", "40", "-c", "20", "--alphabet", "xyz!"]) {
+        check(&s, "^[xyz!]{40}$");
+    }
+    // Largest possible alphabet: all 94 printable ASCII characters.
+    let all: String = (0x21u8..=0x7e).map(char::from).collect();
+    let r = dt(&["random", "nanoid", "-l", "200", "--alphabet", &all]);
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.trim_end().chars().all(|c| all.contains(c)));
+}
+
+#[test]
+fn nanoid_covers_whole_alphabet() {
+    // 3 symbols is a non-power-of-two size: masking+rejection must still reach every symbol.
+    let out = lines(&["random", "nanoid", "-l", "256", "-c", "40", "--alphabet", "abc"]).concat();
+    let mut counts = [0usize; 3];
+    for c in out.chars() {
+        counts[(c as u8 - b'a') as usize] += 1;
+    }
+    let total = out.len() as f64;
+    for n in counts {
+        let share = n as f64 / total;
+        assert!((share - 1.0 / 3.0).abs() < 0.05, "{counts:?}");
+    }
+}
+
+#[test]
+fn nanoid_json_shape() {
+    let j: serde_json::Value =
+        serde_json::from_str(&dt(&["random", "nanoid", "--json", "-l", "8", "-c", "2"]).out).unwrap();
+    assert_eq!(j["type"], "nanoid");
+    assert_eq!(j.as_object().unwrap().len(), 2);
+    assert_eq!(j["values"].as_array().unwrap().len(), 2);
+    check(j["values"][1].as_str().unwrap(), "^[A-Za-z0-9_-]{8}$");
+}
+
+#[test]
+fn ulid_nanoid_usage_errors_and_help() {
+    for extra in [
+        vec!["ulid", "-c", "0"],
+        vec!["ulid", "-c", "1001"],
+        vec!["ulid", "text"],
+        vec!["ulid", "-l", "5"],
+        vec!["nanoid", "-c", "0"],
+        vec!["nanoid", "-c", "1001"],
+        vec!["nanoid", "-l", "0"],
+        vec!["nanoid", "-l", "257"],
+        vec!["nanoid", "--alphabet", "a"],
+        vec!["nanoid", "--alphabet", "aab"],
+        vec!["nanoid", "--alphabet", "a b"],
+        vec!["nanoid", "--alphabet", "aé"],
+        vec!["nanoid", "--alphabet", ""],
+        vec!["nanoid", "text"],
+    ] {
+        let mut args = vec!["random"];
+        args.extend(extra);
+        let r = dt(&args);
+        assert_eq!(r.code, 2, "{args:?}");
+        assert!(r.out.is_empty());
+    }
+    for sub in ["ulid", "nanoid"] {
+        let r = dt(&["random", sub, "-h"]);
+        assert_eq!(r.code, 0);
+        assert!(r.out.starts_with(&format!("dt random {sub}")));
+    }
+    let top = dt(&["random", "-h"]).out;
+    assert!(top.contains("ulid") && top.contains("nanoid"));
+}

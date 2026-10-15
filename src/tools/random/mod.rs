@@ -1,4 +1,6 @@
+mod nanoid;
 mod token;
+mod ulid;
 mod version;
 
 use crate::errors::{Result, usage};
@@ -6,25 +8,29 @@ use crate::io::{choice, integer, parse, print_json};
 use crate::tool::Tool;
 use crate::tools::password::CryptoInts;
 use clap::Parser;
+use nanoid::{DEFAULT_ALPHABET, nanoid, validate_alphabet};
 use std::ffi::OsString;
 use std::io::Write;
 use token::{TOKEN_FORMATS, TokenFormat, token_by_bytes, token_by_length};
+use ulid::UlidGenerator;
 use version::{UUID_VERSIONS, V1Generator, V7Generator, now_ms};
 
 pub static TOOL: Tool = Tool {
     name: "random",
     aliases: &[],
-    description: "Buat UUID atau token acak melalui subcommand uuid/token",
+    description: "Buat UUID, token, ULID, atau NanoID acak melalui subcommand uuid/token/ulid/nanoid",
     category: "Utilitas",
     run,
 };
 
-const HELP: &str = "dt random <uuid|token> [options]
+const HELP: &str = "dt random <uuid|token|ulid|nanoid> [options]
 
-  uuid   Buat identifier UUID v1/v4/v7 dengan format baku
-  token  Buat token acak dengan ukuran dan encoding pilihan
+  uuid    Buat identifier UUID v1/v4/v7 dengan format baku
+  token   Buat token acak dengan ukuran dan encoding pilihan
+  ulid    Buat ULID 26 karakter yang terurut waktu
+  nanoid  Buat ID pendek acak dengan panjang dan alphabet pilihan
 
-Gunakan dt random uuid -h atau dt random token -h untuk opsi masing-masing.
+Gunakan dt random <subcommand> -h untuk opsi masing-masing.
 Tanpa subcommand: tampilkan bantuan. Tidak menerima teks, file, atau stdin.
 Exit: 0 sukses, 1 gagal, 2 penggunaan salah.
 ";
@@ -64,6 +70,33 @@ Contoh: dt random token -l 24 -f alnum
         dt random token --bits 256 -f base64url
 ";
 
+const ULID_HELP: &str = "dt random ulid [options]
+
+Buat ULID: 26 karakter Crockford base32 (timestamp 48 bit ms + 80 bit acak).
+  -c, --count <n>  Jumlah ULID, 1-1000 (default: 1), satu per baris
+      --lowercase  Huruf kecil (default: huruf besar)
+      --json       Keluaran JSON: {type: \"ulid\", values}
+  -h, --help       Tampilkan bantuan
+
+Urut naik ketat dalam satu eksekusi, juga dalam milidetik yang sama.
+Tidak menerima argumen teks.
+Contoh: dt random ulid -c 3
+";
+
+const NANOID_HELP: &str = "dt random nanoid [options]
+
+Buat NanoID dari CSPRNG, tanpa bias modulo.
+  -l, --length <n>      Panjang, 1-256 (default: 21)
+      --alphabet <str>  2-94 karakter ASCII unik tanpa spasi
+                        (default: A-Za-z0-9_-, 64 karakter)
+  -c, --count <n>       Jumlah ID, 1-1000 (default: 1), satu per baris
+      --json            Keluaran JSON: {type: \"nanoid\", values}
+  -h, --help            Tampilkan bantuan
+
+Tidak menerima argumen teks.
+Contoh: dt random nanoid -l 12 --alphabet 0123456789abcdef
+";
+
 #[derive(Parser)]
 #[command(name = "dt random uuid", disable_help_flag = true, disable_version_flag = true)]
 struct UuidArgs {
@@ -95,6 +128,36 @@ struct TokenArgs {
     bits: Option<String>,
     #[arg(short = 'f', long, overrides_with = "format")]
     format: Option<String>,
+    positionals: Vec<String>,
+}
+
+#[derive(Parser)]
+#[command(name = "dt random ulid", disable_help_flag = true, disable_version_flag = true)]
+struct UlidArgs {
+    #[arg(short = 'c', long, overrides_with = "count")]
+    count: Option<String>,
+    #[arg(long, overrides_with = "json")]
+    json: bool,
+    #[arg(short = 'h', long, overrides_with = "help")]
+    help: bool,
+    #[arg(long, overrides_with = "lowercase")]
+    lowercase: bool,
+    positionals: Vec<String>,
+}
+
+#[derive(Parser)]
+#[command(name = "dt random nanoid", disable_help_flag = true, disable_version_flag = true)]
+struct NanoidArgs {
+    #[arg(short = 'c', long, overrides_with = "count")]
+    count: Option<String>,
+    #[arg(long, overrides_with = "json")]
+    json: bool,
+    #[arg(short = 'h', long, overrides_with = "help")]
+    help: bool,
+    #[arg(short = 'l', long, overrides_with = "length")]
+    length: Option<String>,
+    #[arg(long, overrides_with = "alphabet", allow_hyphen_values = true)]
+    alphabet: Option<String>,
     positionals: Vec<String>,
 }
 
@@ -193,6 +256,53 @@ fn run_token(args: Vec<OsString>) -> Result<()> {
     Ok(())
 }
 
+fn run_ulid(args: Vec<OsString>) -> Result<()> {
+    let a: UlidArgs = parse("random ulid", args)?;
+    if a.help {
+        let _ = write!(std::io::stdout(), "{ULID_HELP}");
+        return Ok(());
+    }
+    if let Some(p) = a.positionals.first() {
+        return Err(usage(format!("Argumen tidak dikenal: {p}")));
+    }
+    let count = integer(a.count.as_deref(), 1, 1, 1000, "count")? as usize;
+    let mut g = UlidGenerator::new(now_ms);
+    let mut list = Vec::with_capacity(count);
+    for _ in 0..count {
+        list.push(g.next(a.lowercase)?);
+    }
+    if a.json {
+        print_json(&serde_json::json!({ "type": "ulid", "values": list }));
+    } else {
+        print_lines(&list);
+    }
+    Ok(())
+}
+
+fn run_nanoid(args: Vec<OsString>) -> Result<()> {
+    let a: NanoidArgs = parse("random nanoid", args)?;
+    if a.help {
+        let _ = write!(std::io::stdout(), "{NANOID_HELP}");
+        return Ok(());
+    }
+    if let Some(p) = a.positionals.first() {
+        return Err(usage(format!("Argumen tidak dikenal: {p}")));
+    }
+    let count = integer(a.count.as_deref(), 1, 1, 1000, "count")? as usize;
+    let length = integer(a.length.as_deref(), 21, 1, 256, "length")? as usize;
+    let alphabet = validate_alphabet(a.alphabet.as_deref().unwrap_or(DEFAULT_ALPHABET))?;
+    let mut list = Vec::with_capacity(count);
+    for _ in 0..count {
+        list.push(nanoid(alphabet, length)?);
+    }
+    if a.json {
+        print_json(&serde_json::json!({ "type": "nanoid", "values": list }));
+    } else {
+        print_lines(&list);
+    }
+    Ok(())
+}
+
 fn run(args: Vec<OsString>) -> Result<()> {
     let mut it = args.into_iter();
     let Some(command) = it.next() else {
@@ -206,9 +316,11 @@ fn run(args: Vec<OsString>) -> Result<()> {
             Ok(())
         }
         "uuid" => run_uuid(rest),
+        "ulid" => run_ulid(rest),
+        "nanoid" => run_nanoid(rest),
         "token" => run_token(rest),
         other => Err(usage(format!(
-            "Subcommand random tidak dikenal: {other}. Pilihan: uuid, token."
+            "Subcommand random tidak dikenal: {other}. Pilihan: uuid, token, ulid, nanoid."
         ))),
     }
 }
