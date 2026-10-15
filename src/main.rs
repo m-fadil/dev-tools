@@ -31,7 +31,7 @@ fn help_text() -> String {
         })
         .collect();
     format!(
-        "dt <tool> [options]\n\nTanpa argumen: menu interaktif dengan pencarian. Ctrl+C: batalkan.\n\n{}\n\nGunakan dt <tool> --help untuk opsi tool.",
+        "dt <tool> [options]\n\nTanpa argumen: menu interaktif dengan pencarian. Ctrl+C: batalkan.\nGunakan dt --version untuk melihat versi.\n\n{}\n\nGunakan dt <tool> --help untuk opsi tool.",
         groups.join("\n\n")
     )
 }
@@ -67,6 +67,10 @@ fn run(args: Vec<OsString>) -> Result<()> {
     let first = first.filter(|f| !f.is_empty());
     if matches!(first.as_deref(), Some("-h" | "--help")) {
         println!("{}", help_text());
+        return Ok(());
+    }
+    if matches!(first.as_deref(), Some("-v" | "--version")) {
+        println!("dt {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
     let name = match first {

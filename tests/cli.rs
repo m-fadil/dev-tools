@@ -37,3 +37,12 @@ fn empty_first_arg_acts_like_no_argument() {
     assert!(r.err.contains("Menu memerlukan terminal"));
     assert!(r.out.contains("dt <tool> [options]"));
 }
+
+#[test]
+fn version_flag_prints_package_version() {
+    for flag in ["--version", "-v"] {
+        let r = dt(&[flag]);
+        assert_eq!(r.code, 0, "{flag}");
+        assert_eq!(r.out, format!("dt {}\n", env!("CARGO_PKG_VERSION")), "{flag}");
+    }
+}
