@@ -1,4 +1,4 @@
-import { COMPANY_WORDS, COUNTRIES, DATA, EMAIL_DOMAINS, TLDS, type Locale } from './data.js';
+import { COMPANY_WORDS, COUNTRIES, DATA, TLDS, type Locale } from './data.js';
 import { pick, randInt, type Rng } from './rng.js';
 import { generate as lorem } from '../lorem/text.js';
 
@@ -34,6 +34,7 @@ export type Value = string | number | boolean;
 export interface Params {
     rng: Rng;
     locale: Locale;
+    emailDomain: string;
     /** epoch ms bounds for date/datetime */
     from: number;
     to: number;
@@ -73,7 +74,7 @@ const makers: Record<FakeType, (p: Params) => Value> = {
     email: (p) => {
         const [f, l] = fullName(p);
         const n = p.rng() < 0.4 ? String(randInt(p.rng, 1, 99)) : '';
-        return `${slug(f)}.${slug(l)}${n}@${pick(p.rng, EMAIL_DOMAINS)}`;
+        return `${slug(f)}.${slug(l)}${n}@${p.emailDomain}`;
     },
     username: (p) => {
         const [f, l] = fullName(p);

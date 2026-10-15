@@ -1,8 +1,9 @@
-# Utilitas hash, encrypt, encode, decode, uuid
+# Utilitas hash, encrypt, encode, decode, random
 
-Semua command membaca input dari argumen teks, `--file <path>`, atau stdin
-(dipakai apa adanya, termasuk newline akhir). Tanpa ketiganya di terminal,
-command menampilkan prompt. Prompt ditulis ke stderr, jadi stdout aman dipipe.
+Hash, encrypt, encode, dan decode membaca input dari argumen teks,
+`--file <path>`, atau stdin (dipakai apa adanya, termasuk newline akhir). Tanpa ketiganya
+di terminal, command menampilkan prompt. Prompt ditulis ke stderr, jadi stdout
+aman dipipe. `random` tidak membaca teks/file/stdin; ia menghasilkan data baru.
 Exit: 0 sukses, 1 gagal (input rusak, password salah), 2 penggunaan salah.
 
 ## hash
@@ -75,23 +76,29 @@ atau kecil, mewajibkan dua digit hex setelah setiap `%`, dan mempertahankan
 
 `encode --json` mencetak `{type, output}`. `decode` dan `encrypt` tidak punya `--json`.
 
-## uuid
+## random
+
+`dt random` atau `dt random -h` menampilkan pilihan subcommand `uuid` dan `token`.
+Opsi diberikan setelah subcommand, bukan setelah `random` saja. Command lama
+`dt uuid` dan flag `--token` tidak lagi tersedia.
+
+### UUID
 
 ```bash
-dt uuid -c 3                      # tiga UUID v4
-dt uuid -v 7 -c 3                 # tiga UUID v7 (urut waktu)
-dt uuid -v 1                      # UUID v1
-dt uuid -t                        # token 32 byte (64 karakter hex)
-dt uuid -t --bits 256 -f base64url
-dt uuid -t -l 24 -f alnum         # tepat 24 karakter A-Za-z0-9
+dt random uuid                    # satu UUID v4
+dt random uuid -c 3               # tiga UUID v4
+dt random uuid -v 7 -c 3          # tiga UUID v7 (urut waktu)
+dt random uuid -v 1               # UUID v1
+dt random uuid -h                 # bantuan UUID
 ```
 
-UUID v4 berformat baku (36 karakter, 122 bit acak, 6 bit penanda versi/varian);
-panjangnya tidak bisa diubah dan ia berfungsi sebagai identifier, bukan rahasia.
-Untuk rahasia (API key, secret) pakai `--token`. Memakai CSPRNG `node:crypto`.
+UUID berformat baku 36 karakter; panjang dan formatnya tidak bisa diubah.
+Opsi UUID: `-v/--version` (`1`, `4`, `7`, default `4`), `-c/--count` (1-1000,
+default `1`), `--json`, dan `-h/--help`. Tidak menerima argumen teks atau opsi
+token (`--length`, `--bytes`, `--bits`, `--format`).
 
-`-v/--version` memilih versi UUID: `4` (default), `7`, atau `1`; tidak bisa
-dengan `--token` (exit 2).
+UUID v4 berisi 122 bit acak dan 6 bit penanda versi/varian. UUID berfungsi
+sebagai identifier, bukan rahasia. Untuk rahasia pakai `dt random token`.
 
 - **v7** (RFC 9562): 48 bit timestamp unix milidetik, nibble versi `7`, varian `10`,
   12 bit `rand_a` dipakai sebagai counter (diawali nilai acak), 62 bit acak.
@@ -103,6 +110,20 @@ dengan `--token` (exit 2).
   alamat MAC asli tidak pernah dibaca. Timestamp naik ketat dalam satu eksekusi,
   jadi nilai tidak pernah kembar. Node dan clock sequence tetap per eksekusi.
   v1 tidak terurut secara leksikografis.
+
+### Token
+
+```bash
+dt random token                         # 32 byte, 64 karakter hex
+dt random token --bits 256 -f base64url
+dt random token -l 24 -f alnum            # tepat 24 karakter A-Za-z0-9
+dt random token -c 3 --json
+dt random token -h                       # bantuan token
+```
+
+Token memakai CSPRNG `node:crypto`; tidak perlu flag `--token`. Opsi token:
+`-l/--length`, `-b/--bytes`, `--bits`, `-f/--format`, `-c/--count`,
+`--json`, dan `-h/--help`. Tidak menerima argumen teks atau `--version`.
 
 Ukuran token: pilih salah satu dari `--length` (karakter, 1-4096), `--bytes`
 (1-1024), atau `--bits` (kelipatan 8, 8-8192). Default 32 byte, atau 32 karakter

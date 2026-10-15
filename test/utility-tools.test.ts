@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { createV1Generator, createV7Generator } from '../src/tools/uuid/version.js';
+import { createV1Generator, createV7Generator } from '../src/tools/random/version.js';
 
 const CLI = fileURLToPath(new URL('../src/cli.js', import.meta.url));
 
@@ -226,9 +226,9 @@ describe('encrypt', () => {
     });
 });
 
-describe('uuid', () => {
+describe('random', () => {
     test('UUID v4 by default, count honored', () => {
-        const lines = cli(['uuid', '-c', '3']).out.trim().split('\n');
+        const lines = cli(['random', 'uuid', '-c', '3']).out.trim().split('\n');
         assert.equal(lines.length, 3);
         for (const line of lines)
             assert.match(line, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
@@ -236,7 +236,7 @@ describe('uuid', () => {
     });
 
     test('token size by bytes, bits, or exact characters in every format', () => {
-        const tok = (...a: string[]) => cli(['uuid', '-t', ...a]).out.trim();
+        const tok = (...a: string[]) => cli(['random', 'token', ...a]).out.trim();
         assert.match(tok(), /^[0-9a-f]{64}$/);
         assert.equal(tok('-b', '24', '-f', 'base64url').length, 32);
         assert.match(tok('--bits', '128'), /^[0-9a-f]{32}$/);
@@ -252,7 +252,7 @@ describe('uuid', () => {
 
     test('v7 layout and strict ordering within one invocation', () => {
         const before = Date.now();
-        const lines = cli(['uuid', '-v', '7', '-c', '1000']).out.trim().split('\n');
+        const lines = cli(['random', 'uuid', '-v', '7', '-c', '1000']).out.trim().split('\n');
         const after = Date.now();
         assert.equal(lines.length, 1000);
         for (const line of lines)
@@ -326,7 +326,7 @@ describe('uuid', () => {
     });
 
     test('v1 layout, multicast random node, uniqueness', () => {
-        const lines = cli(['uuid', '-v', '1', '-c', '500']).out.trim().split('\n');
+        const lines = cli(['random', 'uuid', '-v', '1', '-c', '500']).out.trim().split('\n');
         assert.equal(lines.length, 500);
         assert.equal(new Set(lines).size, 500);
         for (const line of lines)
@@ -345,31 +345,55 @@ describe('uuid', () => {
     });
 
     test('--json shape', () => {
-        const u = JSON.parse(cli(['uuid', '--json', '-v', '7', '-c', '2']).out);
+        const u = JSON.parse(cli(['random', 'uuid', '--json', '-v', '7', '-c', '2']).out);
         assert.equal(u.type, 'uuid');
         assert.equal(u.version, 7);
         assert.equal(u.values.length, 2);
-        assert.equal(JSON.parse(cli(['uuid', '--json']).out).version, 4);
-        const t = JSON.parse(cli(['uuid', '--json', '-t', '-b', '4', '-f', 'hex']).out);
+        assert.equal(JSON.parse(cli(['random', 'uuid', '--json']).out).version, 4);
+        const t = JSON.parse(cli(['random', 'token', '--json', '-b', '4', '-f', 'hex']).out);
         assert.equal(t.type, 'token');
         assert.equal(t.format, 'hex');
         assert.match(t.values[0], /^[0-9a-f]{8}$/);
         assert.equal('version' in t, false);
     });
 
-    test('invalid size options are usage errors', () => {
+    test('subcommands reject invalid values, mixed scopes, and obsolete token flags', () => {
         for (const args of [
-            ['-b', '8'], // size without --token
-            ['-t', '-b', '0'],
-            ['-t', '--bits', '12'],
-            ['-t', '-l', '5', '-b', '5'],
-            ['-t', '-f', 'alnum', '-b', '5'],
-            ['-t', '-f', 'nope'],
-            ['-c', '1001'],
-            ['-v', '5'],
-            ['-t', '-v', '4'],
+            ['uuid', '-b', '8'],
+            ['uuid', '--bits', '128'],
+            ['uuid', '--length', '8'],
+            ['uuid', '--format', 'hex'],
+            ['uuid', '--token'],
+            ['uuid', '-t'],
+            ['uuid', '-v', '5'],
+            ['uuid', '-c', '1001'],
+            ['uuid', 'text'],
+            ['token', '-b', '0'],
+            ['token', '--bits', '12'],
+            ['token', '-l', '5', '-b', '5'],
+            ['token', '--bits', '128', '--bytes', '16'],
+            ['token', '-f', 'alnum', '-b', '5'],
+            ['token', '-f', 'nope'],
+            ['token', '-v', '4'],
+            ['token', '--token'],
+            ['token', '-c', '1001'],
+            ['token', 'text'],
+            ['--bits', '128'],
+            ['unknown'],
         ]) {
-            assert.equal(cli(['uuid', ...args]).code, 2, args.join(' '));
+            const result = cli(['random', ...args]);
+            assert.equal(result.code, 2, args.join(' '));
+            assert.equal(result.out, '', args.join(' '));
         }
+    });
+
+    test('token count applies without a mode flag and UUID command is removed', () => {
+        const result = cli(['random', 'token', '-l', '20', '-f', 'alnum', '-c', '3', '--json']);
+        assert.equal(result.code, 0, result.err);
+        const tokens = JSON.parse(result.out);
+        assert.equal(tokens.type, 'token');
+        assert.equal(tokens.values.length, 3);
+        for (const value of tokens.values) assert.match(value, /^[A-Za-z0-9]{20}$/);
+        assert.equal(cli(['uuid']).code, 2);
     });
 });

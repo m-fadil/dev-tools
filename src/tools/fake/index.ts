@@ -1,3 +1,4 @@
+import { domainToASCII } from 'node:url';
 import { UsageError } from '../../errors.js';
 import { choice, integer, parseToolArgs, printJson } from '../../io.js';
 import type { Tool } from '../../tool.js';
@@ -8,28 +9,57 @@ import { rngFromSeed } from './rng.js';
 const MAX_SPAN = 4_294_967_295;
 const YEAR_MS = 365.25 * 86_400_000;
 
-function help(): void {
-    console.log(`dt fake <jenis> [options]
+const specialHelp: { types: FakeType[]; options: string[] }[] = [
+    { types: ['email'], options: ['--domain <domain>  default: example.com'] },
+    {
+        types: ['date', 'datetime'],
+        options: ['--from <tanggal>   batas awal (ISO 8601)', '--to <tanggal>     batas akhir (ISO 8601)'],
+    },
+    { types: ['number'], options: ['--min <n>          default: 0', '--max <n>          default: 1000'] },
+    { types: ['hex'], options: ['--length <n>       default: 16'] },
+];
 
-Buat data acak untuk pengujian (lihat catatan telepon; bukan untuk keamanan).
-Jenis: ${TYPES.join(', ')}
-  -c, --count <n>      Jumlah hasil, 1-1000 (default: 1), satu per baris
-      --locale <l>     id atau en (default: en)
-      --seed <n>       Seed bilangan bulat 0-4294967295 agar hasil dapat diulang
-      --from <tanggal> Batas awal date/datetime, ISO 8601 tanpa pecahan detik (default: 10 tahun lalu)
-      --to <tanggal>   Batas akhir date/datetime, ISO 8601 tanpa pecahan detik (default: sekarang)
-      --min <n>        Batas bawah number (default: 0)
-      --max <n>        Batas atas number (default: 1000, atau --min bila lebih besar);
-                       selisih --max - --min maks. 4294967295
-      --length <n>     Panjang hex dalam karakter, 1-1024 (default: 16)
-      --json           Keluaran JSON: {type, locale, values: []}
-  -h, --help           Tampilkan bantuan
+function help(type?: FakeType): void {
+    const groups = specialHelp.filter((group) => type === undefined || group.types.includes(type));
+    const special = groups.length
+        ? `\nOpsi khusus:\n${groups
+              .map(
+                  (group) =>
+                      `  ${type ?? group.types.join(', ')}\n${group.options.map((line) => `    ${line}`).join('\n')}`,
+              )
+              .join('\n')}\n`
+        : '';
+    const phone =
+        type === undefined || type === 'phone'
+            ? '\nTelepon id hanya mirip format nomor asli; jangan dipakai untuk menghubungi siapa pun.\n'
+            : '';
+    console.log(`dt fake ${type ?? '<jenis>'} [options]
+${type === undefined ? `\nJenis: ${TYPES.join(', ')}\n` : ''}
+Opsi umum:
+  -c, --count <n>   jumlah hasil, 1-1000 (default: 1)
+      --locale <l>  id atau en (default: en)
+      --seed <n>    hasil bisa diulang
+      --json        keluaran JSON
+  -h, --help        bantuan
+${special}${phone}
+Contoh: ${type === 'email' ? 'dt fake email --domain perusahaan.test -c 5' : `dt fake ${type ?? 'name'} -c 5 --seed 7`}`);
+}
 
-Email memakai example.com/.org/.net, IP dari rentang dokumentasi (RFC 5737/3849),
-telepon en dari rentang fiktif NANP 555-01xx; telepon id hanya berformat mirip
-nomor seluler dan bisa milik pelanggan nyata (jangan dipakai untuk menghubungi siapa pun). Tanpa jenis, daftar jenis ditampilkan.
-Tanpa --seed hasil berbeda tiap eksekusi; default --from/--to bergantung pada waktu sekarang.
-Contoh: dt fake name -c 5 --locale id   |   dt fake number --min 10 --max 20 --seed 7`);
+/** Normalize a DNS email domain without accepting URL/userinfo syntax or querying DNS. */
+function parseDomain(value: string): string {
+    if (/[\s@:/\\?#%[\]]/u.test(value))
+        throw new UsageError('--domain harus domain saja, tanpa @, URL, port, atau path.');
+    const domain = domainToASCII(value).toLowerCase();
+    const labels = domain.split('.');
+    if (
+        !domain ||
+        domain.length > 253 ||
+        labels.length < 2 ||
+        labels.some((label) => label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))
+    ) {
+        throw new UsageError(`Domain email tidak valid: ${value}`);
+    }
+    return domain;
 }
 
 /** Strict ISO 8601 date or date-time without fractional seconds; date-only and zone-less values are UTC. */
@@ -57,6 +87,7 @@ async function run(args: string[]): Promise<void> {
         count: { type: 'string', short: 'c' },
         locale: { type: 'string' },
         seed: { type: 'string' },
+        domain: { type: 'string' },
         from: { type: 'string' },
         to: { type: 'string' },
         min: { type: 'string' },
@@ -65,28 +96,30 @@ async function run(args: string[]): Promise<void> {
         json: { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
     });
-    if (values.help) {
-        help();
-        return;
-    }
-    if (positionals.length === 0) {
-        console.log(`Jenis yang tersedia:\n${TYPES.map((t) => `  ${t}`).join('\n')}`);
-        return;
-    }
     if (positionals.length > 1) throw new UsageError(`Argumen tidak dikenal: ${positionals[1]}`);
-    const type = positionals[0] as FakeType;
-    if (!TYPES.includes(type)) throw new UsageError(`Jenis tidak dikenal: ${type}. Pilihan: ${TYPES.join(', ')}`);
-
+    const type = positionals[0] as FakeType | undefined;
+    if (type !== undefined && !TYPES.includes(type)) {
+        throw new UsageError(`Jenis tidak dikenal: ${type}. Pilihan: ${TYPES.join(', ')}`);
+    }
     const only = (names: string[], types: FakeType[]) => {
         for (const n of names) {
-            if (values[n as keyof typeof values] !== undefined && !types.includes(type)) {
+            if (values[n as keyof typeof values] !== undefined && (type === undefined || !types.includes(type))) {
                 throw new UsageError(`--${n} hanya berlaku untuk jenis: ${types.join(', ')}`);
             }
         }
     };
+    only(['domain'], ['email']);
     only(['from', 'to'], ['date', 'datetime']);
     only(['min', 'max'], ['number']);
     only(['length'], ['hex']);
+    if (values.help) {
+        help(type);
+        return;
+    }
+    if (type === undefined) {
+        console.log(`Jenis yang tersedia:\n${TYPES.map((t) => `  ${t}`).join('\n')}`);
+        return;
+    }
 
     const count = integer(values.count, 1, 1, 1000, 'count');
     const locale = choice(values.locale, LOCALES, 'en', 'locale');
@@ -102,6 +135,7 @@ async function run(args: string[]): Promise<void> {
     const params: Params = {
         rng: rngFromSeed(values.seed),
         locale,
+        emailDomain: values.domain === undefined ? 'example.com' : parseDomain(values.domain),
         from,
         to,
         min,

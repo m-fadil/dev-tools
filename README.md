@@ -51,7 +51,7 @@ Buka menu atau jalankan alat langsung:
 docker run --rm -it ghcr.io/m-fadil/dev-tools:latest
 docker run --rm ghcr.io/m-fadil/dev-tools:latest --help
 docker run --rm ghcr.io/m-fadil/dev-tools:latest hash "halo"
-docker run --rm ghcr.io/m-fadil/dev-tools:latest uuid
+docker run --rm ghcr.io/m-fadil/dev-tools:latest random uuid
 ```
 
 Untuk membaca file dari folder saat ini:
@@ -76,7 +76,8 @@ Di Docker, tulis nama alat langsung setelah nama image—tidak perlu menambahkan
 dt                         # buka menu dan cari alat
 dt --help                  # lihat semua alat
 dt hash "halo"             # buat hash
-dt uuid                    # buat ID acak
+dt random uuid             # buat ID acak
+dt random token --bits 256  # buat token acak
 dt password                # buat password
 dt json --file data.json   # rapikan JSON
 dt time                    # lihat waktu sekarang

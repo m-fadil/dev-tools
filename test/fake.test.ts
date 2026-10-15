@@ -43,25 +43,83 @@ describe('fake', () => {
         }
     });
 
-    test('emails use reserved domains', () => {
-        for (const e of lines(['email', '-c', '50', '--seed', '1']))
-            assert.match(e, /^[a-z]+\.[a-z]+\d*@example\.(com|org|net)$/);
-        for (const e of lines(['email', '-c', '50', '--seed', '1', '--locale', 'id']))
-            assert.match(e, /@example\.(com|org|net)$/);
+    test('email defaults to example.com in both locales', () => {
+        for (const locale of ['en', 'id']) {
+            for (const email of lines(['email', '-c', '20', '--seed', '1', '--locale', locale])) {
+                assert.match(email, /^[a-z]+\.[a-z]+\d*@example\.com$/);
+            }
+        }
+    });
+
+    test('email domain is normalized and custom domains preserve seeded usernames', () => {
+        const defaults = lines(['email', '-c', '10', '--seed', '42']);
+        const custom = lines(['email', '--domain', 'Mail.Perusahaan.TEST', '-c', '10', '--seed', '42']);
+        assert.deepEqual(
+            custom,
+            defaults.map((email) => email.replace('@example.com', '@mail.perusahaan.test')),
+        );
+        assert.deepEqual(lines(['email', '--domain', 'Mail.Perusahaan.TEST', '-c', '10', '--seed', '42']), custom);
+        const result = cli(['fake', 'email', '--domain', 'BÜCHER.test', '--seed', '42', '-c', '3', '--json']);
+        assert.equal(result.code, 0, result.err);
+        const emails = JSON.parse(result.out);
+        assert.equal(emails.type, 'email');
+        assert.equal(emails.values.length, 3);
+        for (const email of emails.values) assert.match(email, /@xn--bcher-kva\.test$/);
+    });
+
+    test('domain is rejected outside email, including missing type and help mode', () => {
+        for (const type of TYPES.filter((type) => type !== 'email')) {
+            const result = cli(['fake', type, '--domain', 'example.com']);
+            assert.equal(result.code, 2, type);
+            assert.equal(result.out, '', type);
+        }
+        for (const args of [
+            ['fake', '--domain', 'example.com'],
+            ['fake', 'name', '--domain', 'example.com', '-h'],
+            ['fake', 'unknown', '-h'],
+            ['fake', 'email', 'extra', '-h'],
+        ]) {
+            const result = cli(args);
+            assert.equal(result.code, 2, args.join(' '));
+            assert.equal(result.out, '');
+        }
+    });
+
+    test('email domain rejects malformed hostnames and URL or address syntax', () => {
+        for (const domain of [
+            '',
+            'localhost',
+            'user@example.com',
+            '@example.com',
+            'https://example.com',
+            'example.com:443',
+            'example.com/path',
+            'example.com\\path',
+            'example.com?x=1',
+            'example.com#fragment',
+            'example%2ecom',
+            ' example.com',
+            'example .com',
+            'a..test',
+            '.example.com',
+            'example.com.',
+            '-a.test',
+            'a-.test',
+            'a_b.test',
+            '[::1]',
+            `${'a'.repeat(64)}.test`,
+            `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(63)}`,
+        ]) {
+            const result = cli(['fake', 'email', '--domain', domain]);
+            assert.equal(result.code, 2, domain);
+            assert.equal(result.out, '', domain);
+        }
     });
 
     test('en phones use fictional ranges; id phones are only format-plausible', () => {
         for (const p of lines(['phone', '-c', '30', '--seed', '2'])) assert.match(p, /^\+1 \d{3}-555-01\d{2}$/);
         for (const p of lines(['phone', '-c', '30', '--seed', '2', '--locale', 'id']))
             assert.match(p, /^\+62 8\d{2}-\d{4}-\d{4}$/);
-    });
-
-    test('help warns that id phone numbers may belong to real subscribers', () => {
-        const r = cli(['fake', '--help']);
-        assert.equal(r.code, 0, r.err);
-        assert.match(r.out, /telepon en dari rentang fiktif NANP 555-01xx/);
-        assert.match(r.out, /pelanggan nyata/);
-        assert.match(r.out, /jangan dipakai untuk menghubungi siapa pun/);
     });
 
     test('network values stay in documentation ranges', () => {
