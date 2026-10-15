@@ -13,9 +13,11 @@ pub mod cron;
 pub mod csv;
 pub mod decode;
 pub mod diff;
+pub mod duration;
 pub mod encode;
 pub mod encrypt;
 pub mod env;
+pub mod escape;
 pub mod fake;
 pub mod hash;
 pub mod image;
@@ -27,13 +29,17 @@ pub mod math;
 pub mod number;
 pub mod password;
 pub mod port;
+pub mod qr;
 pub mod random;
 pub mod regex;
 pub mod semver;
 pub mod syncgit;
 pub mod text;
 pub mod time;
+pub mod toml;
+pub mod update;
 pub mod url;
+pub mod yaml;
 
 /// Registration order matches the legacy registry.
 pub static TOOLS: &[&Tool] = &[
@@ -69,6 +75,12 @@ pub static TOOLS: &[&Tool] = &[
     &regex::TOOL,
     &semver::TOOL,
     &text::TOOL,
+    &duration::TOOL,
+    &escape::TOOL,
+    &yaml::TOOL,
+    &toml::TOOL,
+    &qr::TOOL,
+    &update::TOOL,
 ];
 
 /// Resolves a command name or alias.

@@ -20,17 +20,17 @@ curl -fsSL https://github.com/m-fadil/dev-tools/releases/latest/download/install
 pakai skrip dari rilis itu; versi tersebut menjadi default-nya:
 
 ```bash
-curl -fsSL https://github.com/m-fadil/dev-tools/releases/download/v1.0.0/install.sh | sh
+curl -fsSL https://github.com/m-fadil/dev-tools/releases/download/v1.1.0/install.sh | sh
 ```
 
 Pengaturan lewat variabel lingkungan:
 
 | Variabel | Fungsi |
 | --- | --- |
-| `DT_VERSION` | Versi yang dipasang, mis. `v1.0.0` atau `1.0.0-rc.1` (juga untuk prarilis). |
+| `DT_VERSION` | Versi yang dipasang, mis. `v1.1.0` atau `1.1.0-rc.1` (juga untuk prarilis). |
 | `DT_INSTALL_DIR` | Folder tujuan (default `~/.local/bin`). |
 
-Versi juga bisa diberikan sebagai argumen: `... | sh -s -- v1.0.0`. Jalankan
+Versi juga bisa diberikan sebagai argumen: `... | sh -s -- v1.1.0`. Jalankan
 ulang untuk memperbarui. Di Linux yang dipasang adalah build musl (statis).
 Pastikan `~/.local/bin` ada di `PATH`. Di Windows, unduh arsip `.zip` dari
 halaman rilis.
@@ -115,6 +115,8 @@ Di Docker, tulis nama alat langsung setelah nama image—tidak perlu menambahkan
 ```bash
 dt                         # buka menu dan cari alat
 dt --help                  # lihat semua alat
+dt --version               # versi terpasang (juga -v)
+dt update                  # pasang rilis terbaru
 dt hash "halo"             # buat hash
 dt random uuid             # buat ID acak
 dt random token --bits 256  # buat token acak
@@ -127,9 +129,9 @@ Untuk panduan setiap alat, jalankan `dt <nama> --help`, misalnya `dt encrypt --h
 
 ## Fitur
 
-- Hash, password, ID acak, dan enkripsi.
-- Encode/decode, JSON, CSV, dan pengolahan teks.
-- Waktu, jadwal, warna, ukuran data, dan perhitungan.
+- Hash, password, ID acak (UUID, ULID, NanoID), dan enkripsi.
+- Encode/decode, escape, JSON, YAML, TOML, CSV, dan pengolahan teks.
+- Waktu, durasi, jadwal, warna, ukuran data, QR code, dan perhitungan.
 - Pemeriksaan jaringan, gambar, file, dan sinkronisasi Git.
 
 Contoh lengkap tersedia di [dokumentasi](docs/README.md).

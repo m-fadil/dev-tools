@@ -24,5 +24,5 @@ fn names_and_aliases_unique() {
             }
         }
     }
-    assert_eq!(count, 32);
+    assert_eq!(count, 38);
 }

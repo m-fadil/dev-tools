@@ -78,7 +78,7 @@ atau kecil, mewajibkan dua digit hex setelah setiap `%`, dan mempertahankan
 
 ## random
 
-`dt random` atau `dt random -h` menampilkan pilihan subcommand `uuid` dan `token`.
+`dt random` atau `dt random -h` menampilkan pilihan subcommand `uuid`, `token`, `ulid`, dan `nanoid`.
 Opsi diberikan setelah subcommand, bukan setelah `random` saja. Command lama
 `dt uuid` dan flag `--token` tidak lagi tersedia.
 
@@ -132,10 +132,54 @@ karakter/byte), dan `alnum` (A-Za-z0-9, hanya dengan `--length`). Dengan
 `--length`, hasil dipotong dan base64 tidak memakai padding `=`; entropi tetap
 4 bit/karakter (hex) atau 6 bit/karakter (base64, alnum ~5,95). `--count` 1-1000.
 
+### ULID
+
+```bash
+dt random ulid                    # satu ULID
+dt random ulid -c 3 --lowercase   # tiga ULID huruf kecil
+dt random ulid --json
+```
+
+```text
+$ dt random ulid -c 3
+01M4Z8WZS5SC5KPNNQZHRCYNW8
+01M4Z8WZS5SC5KPNNQZHRCYNW9
+01M4Z8WZS5SC5KPNNQZHRCYNWA
+```
+
+ULID berisi 26 karakter Crockford base32: 48 bit timestamp unix milidetik dan
+80 bit acak dari CSPRNG. Opsi: `-c/--count` (1-1000, default `1`), `--lowercase`
+(default huruf besar), `--json` (`{type: "ulid", values}`), dan `-h/--help`.
+Dalam satu eksekusi hasilnya naik ketat: dalam milidetik yang sama (atau bila
+jam mundur) bagian acak ditambah 1; bila 80 bit meluap, timestamp dimajukan 1 ms.
+
+### NanoID
+
+```bash
+dt random nanoid                                  # 21 karakter A-Za-z0-9_-
+dt random nanoid -l 12 --alphabet 0123456789abcdef -c 2
+dt random nanoid --json
+```
+
+```text
+$ dt random nanoid
+MoawcJLgskGsGU30g1_PB
+$ dt random nanoid -l 12 --alphabet 0123456789abcdef -c 2
+a3cf6bfdb2bb
+a8664164537b
+```
+
+Opsi: `-l/--length` (1-256, default `21`), `--alphabet` (2-94 karakter ASCII
+yang dapat dicetak, unik, tanpa spasi; default `A-Za-z0-9_-` 64 karakter),
+`-c/--count` (1-1000), `--json` (`{type: "nanoid", values}`), dan `-h/--help`.
+Pengambilan karakter tanpa bias modulo (mask pangkat dua dan tolak nilai di
+luar alphabet). Alphabet ganda, non-ASCII, atau berspasi ditolak (exit 2).
+
 ### Keluaran JSON
 
-`--json` mencetak `{type, version?, format?, values}`: `type` `"uuid"` atau
-`"token"`; `version` (angka 1/4/7) hanya untuk uuid; `format` hanya untuk token;
-`values` array string sesuai `--count`.
+`--json` mencetak `{type, version?, format?, values}`: `type` `"uuid"`,
+`"token"`, `"ulid"`, atau `"nanoid"`; `version` (angka 1/4/7) hanya untuk uuid;
+`format` hanya untuk token; ulid dan nanoid hanya `{type, values}`; `values`
+array string sesuai `--count`.
 
 [Kembali ke dokumentasi](README.md).

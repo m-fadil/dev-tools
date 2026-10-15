@@ -113,8 +113,8 @@ berubah saat build ulang.
 Verifikasi attestation:
 
 ```bash
-gh attestation verify --owner m-fadil oci://ghcr.io/m-fadil/dev-tools:1.0.0
-gh attestation verify --owner m-fadil dt-v1.0.0-x86_64-unknown-linux-gnu.tar.gz
+gh attestation verify --owner m-fadil oci://ghcr.io/m-fadil/dev-tools:1.1.0
+gh attestation verify --owner m-fadil dt-v1.1.0-x86_64-unknown-linux-gnu.tar.gz
 ```
 
 [Kembali ke dokumentasi](README.md).

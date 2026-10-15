@@ -1,5 +1,15 @@
 # Catatan rilis
 
+## v1.1.0
+
+Tambahan fitur, tanpa perubahan perilaku pada tool yang sudah ada.
+
+- `dt --version` / `dt -v` mencetak versi.
+- `install.sh`: pencarian rilis terbaru juga bekerja dengan wget2.
+- `dt update`: periksa dan pasang rilis terbaru (butuh `curl` atau `wget`).
+- `random ulid` dan `random nanoid`.
+- Tool baru: `duration`, `escape`, `yaml`, `toml`, dan `qr`.
+
 ## v1.0.0
 
 `dt` ditulis ulang dalam Rust. Instalasi dari sumber memakai

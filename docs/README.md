@@ -3,7 +3,7 @@
 ## Penggunaan
 
 - [syncgit](syncgit.md) — sinkronisasi commit dan tag antar remote Git dengan pemetaan identitas.
-- [Utilitas](utilities.md) — hash, encrypt, encode, decode, dan random (uuid/token).
+- [Utilitas](utilities.md) — hash, encrypt, encode, decode, dan random (uuid/token/ulid/nanoid).
 - [password](password.md) — password acak dengan kelas karakter terjamin.
 - [checksum](checksum.md) — hitung dan verifikasi checksum file.
 - [jwt](jwt.md) — decode dan verifikasi JWT.
@@ -29,11 +29,17 @@
 - [fake](fake.md) — data palsu (nama, email, alamat, dll.).
 - [math](math.md) — evaluasi ekspresi matematika.
 - [image](image.md) — metadata gambar PNG, JPEG, GIF, WebP.
+- [duration](duration.md) — konversi durasi dan selisih waktu.
+- [escape](escape.md) — escape/unescape untuk JSON, HTML, URL, regex, dan shell.
+- [yaml](yaml.md) — validasi, format, query, dan konversi YAML dari/ke JSON.
+- [toml](toml.md) — validasi, format, query, dan konversi TOML dari/ke JSON.
+- [qr](qr.md) — QR code di terminal, ASCII, atau SVG.
+- [update](update.md) — periksa dan pasang rilis `dt` terbaru.
 - [completion](completion.md) — skrip auto-complete bash, zsh, fish.
 
 ## Pengembangan
 
 - [Maintenance dan struktur kode](development.md).
-- [Catatan rilis v1.0.0](releases.md).
+- [Catatan rilis](releases.md).
 
 [Kembali ke ringkasan repo](../README.md).
