@@ -1,5 +1,11 @@
 # Build output
 /target/
+/dist/
+**/*.rs.bk
+*.pdb
+
+# Dependencies
+node_modules/
 
 # Logs
 *.log
@@ -12,10 +18,21 @@
 # Caches
 .cache/
 
+# Coverage / profiling
+*.profraw
+*.profdata
+lcov.info
+/coverage/
+/tarpaulin-report.html
+flamegraph.svg
+perf.data*
+
 # Editors / OS
 .vscode/
 .idea/
 *.swp
+*.swo
+*~
 .DS_Store
 Thumbs.db
 
