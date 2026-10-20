@@ -1,5 +1,14 @@
 # Catatan rilis
 
+## v1.3.0
+
+- Rilis hanya untuk Linux (musl, x86_64 dan aarch64). Aset macOS dan Windows tidak lagi
+  dibuat; `install.sh` dan `dt update` menolak OS lain. Instalasi dari sumber
+  (`cargo install`) tetap bisa dikompilasi di OS lain.
+- `dt syncgit -a`: branch sumber yang belum ada lokal tetapi sudah ada di remote tujuan
+  dimulai dari `<tujuan>/<branch>`, sehingga hanya selisih commit yang dibawa. Tip tujuan
+  yang tidak cocok dengan sumber memakai logika titik cabang seperti sebelumnya.
+
 ## v1.2.0
 
 Tambahan fitur, tanpa perubahan perilaku tanpa flag baru.
