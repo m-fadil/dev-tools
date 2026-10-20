@@ -19,6 +19,8 @@ Wizard meminta repo, remote sumber/tujuan, mailmap, dan branch lokal. Mode defau
 default **tidak**. Ctrl+C membatalkan prompt (exit 130). Wizard membutuhkan TTY.
 Hanya branch lokal yang bisa dipilih; branch dari argumen yang tidak ada secara lokal
 dilaporkan dan tidak ikut dipilih. Mailmap relatif dibaca dari repo yang dipilih di wizard.
+Wizard juga menanyakan sinkron semua branch (tanpa daftar pilihan), penghapusan branch,
+dan `--force`; semuanya default **tidak**.
 
 Gunakan `--interactive` untuk wizard dengan nilai awal dari flag:
 
@@ -44,6 +46,15 @@ dt syncgit --repo /path/to/repo -p
 dt syncgit --repo /path/to/work --source upstream --destination origin \
   --mailmap identities.txt -n main
 
+# Semua branch sumber (branch baru dibuat lokal), lalu push
+dt syncgit --repo /path/to/repo -a -p
+
+# Cermin penuh: semua branch, hapus branch/tag yang hilang di sumber
+dt syncgit --repo /path/to/repo --mirror -p
+
+# Isi history di sumber berubah (squash/drop/amend): bangun ulang dari sumber
+dt syncgit --repo /path/to/repo -f -p main
+
 # Bantuan lengkap
 dt syncgit --help
 ```
@@ -59,13 +70,18 @@ dt syncgit --help
 | `-n`, `--dry-run`        | Preview tanpa commit/tag lokal atau push; fetch tetap dilakukan.                             |
 | `-p`, `--push`           | Push branch dan tag setelah sinkronisasi lokal.                                              |
 | `-d`, `--delete-tags`    | Hapus semua tag lokal yang tidak ada di sumber; dengan push, hapus nama yang sama di tujuan. |
+| `-a`, `--all-branches`   | Sinkron semua branch sumber; yang belum ada dibuat lokal. Tidak dapat dengan nama branch.    |
+| `--delete-branches`      | Hapus branch lokal yang tidak ada di sumber; dengan push, hapus nama yang sama di tujuan.    |
+| `-f`, `--force`          | Bangun ulang branch yang isi history-nya berubah di sumber; push dengan lease.               |
+| `--mirror`               | `--all-branches --delete-branches --delete-tags`; tidak termasuk `--force`.                  |
 | `-i`, `--interactive`    | Wizard dengan nilai awal dari opsi.                                                          |
 | `-h`, `--help`           | Bantuan command.                                                                             |
 | `branch ...`             | Branch yang disinkronkan; default branch HEAD remote sumber (mis. `main` atau `master`).     |
 
-Tanpa argumen branch, branch default dibaca dari remote sumber (`git ls-remote --symref`),
-sehingga membutuhkan akses ke remote. Wizard memilihnya otomatis bila branch lokal
-dengan nama yang sama ada. Bila HEAD remote tidak terdeteksi, sebutkan branch secara eksplisit.
+Tanpa argumen branch (dan tanpa `-a`/`--mirror`), branch default dibaca dari remote sumber
+(`git ls-remote --symref`), sehingga membutuhkan akses ke remote. Wizard memilihnya otomatis
+bila branch lokal dengan nama yang sama ada. Bila HEAD remote tidak terdeteksi, sebutkan
+branch secara eksplisit.
 
 ## Exit code
 
@@ -97,7 +113,7 @@ dikirim ke remote tujuan memakai identitas terpetakan; sumber tidak di-push.
   berubah tanpa perubahan isi dapat diterima. Bila tidak ada yang cocok, dipakai
   satu-satunya commit sumber dengan tree yang sama (dengan peringatan). Bila tree
   tidak ditemukan atau dimiliki lebih dari satu commit sumber, berhenti untuk
-  pemeriksaan manual; tidak reset/force branch otomatis.
+  pemeriksaan manual; tidak reset/force branch otomatis tanpa `--force`.
 - Commit baru dibawa satu per satu. Pesan, tanggal author/committer dipertahankan;
   identitas lewat mailmap. Tree hasil harus identik sumber. Commit kosong didukung.
   Merge commit yang memerlukan mainline tidak otomatis diimpor.
@@ -112,7 +128,8 @@ dikirim ke remote tujuan memakai identitas terpetakan; sumber tidak di-push.
   belum disalin.
 - Dry-run masih fetch (mengubah tracking refs/namespace tag/cache objek), tetapi
   tidak checkout, membuat commit/tag lokal, menghapus tag lokal, atau push.
-- Push branch fast-forward, lalu tag. Tag baru/tidak berubah tidak di-force;
+- Push branch fast-forward; branch yang dibangun ulang oleh `--force` menyusul dengan
+  `--force-with-lease`, lalu penghapusan branch, lalu tag. Tag baru/tidak berubah tidak di-force;
   konflik tag tujuan ditolak. Tag yang dipindah menggunakan `--force-with-lease`
   yang dikunci ke nilai remote saat mulai. Tidak menimpa perubahan remote yang
   terjadi sesudah nilai itu dibaca. Push bukan transaksi atomik: bila push branch
@@ -122,6 +139,26 @@ dikirim ke remote tujuan memakai identitas terpetakan; sumber tidak di-push.
 - Penghapusan tag mencakup **semua** tag lokal yang tidak ada di sumber, termasuk
   tag manual. Dengan push, nama tersebut juga dihapus di tujuan menggunakan lease.
   Tag yang hanya ada di tujuan (tidak ada lokal) tidak dihapus.
+- `--all-branches`: branch sumber yang belum ada lokal dibuat di titik cabangnya. Titik
+  cabang = induk commit paling awal yang unik bagi branch itu, dipadankan (tree + author
+  date + subject) ke branch lokal yang sudah disinkronkan; hanya commit unik yang dibawa.
+  Replay deterministik, jadi commit yang sama di dua branch memiliki hash sama. Branch
+  yatim dibuat dari root. Padanan tidak ada/ambigu berhenti untuk pemeriksaan manual.
+  Merge commit yang memerlukan mainline tetap tidak otomatis diimpor.
+- `--delete-branches`: hapus **semua** branch lokal yang tidak ada di `refs/remotes/<source>`
+  (fetch memakai `--prune`), termasuk branch kerja lokal-saja, baik dengan `-a` maupun nama
+  branch eksplisit. Branch yang sedang di-checkout (checkout utama atau worktree lain) dilewati;
+  bila sumber tanpa branch, penghapusan dilewati. Tip lama disimpan di
+  `refs/syncgit-backup/<waktu>/<branch>`. Dengan push, nama yang sama di tujuan dihapus dengan
+  lease; branch yang hanya ada di tujuan tidak dihapus.
+- `--force`: dipakai saat tip lokal tidak bisa dipadankan ke sumber karena isinya berubah
+  (squash, drop, amend, reset mundur). Rewrite yang isinya sama sudah tertangani tanpa
+  `--force`. Branch direset ke commit terakhir yang masih sama di dua sisi, sisanya diputar
+  ulang dari sumber. Tanpa commit bersama, branch dibangun dari root di branch sementara
+  `syncgit-rebuild/<branch>` yang baru menggantikan branch asli setelah replay sukses; bila
+  gagal, branch asli tidak berubah. Commit lokal yang tidak ada di sumber dilepas dari branch
+  tetapi tetap ada di ref cadangan. Push memakai `--force-with-lease` terhadap nilai tujuan
+  saat mulai. Titik bersama ambigu tetap berhenti. History lokal dimuat ke memori pada jalur ini.
 - HEAD awal dipulihkan setelah operasi normal maupun gagal, termasuk detached HEAD.
   Bila pemulihan sendiri gagal, error asli tetap dilaporkan. Saat konflik/perubahan
   belum di-commit, working tree dibiarkan; pesan error memberi perintah pemulihan
@@ -133,7 +170,8 @@ dikirim ke remote tujuan memakai identitas terpetakan; sumber tidak di-push.
 Integration test memakai repo sementara tanpa jaringan. Mencakup pemetaan
 identitas/tanggal/pesan/tree, hash rewrite, commit kosong, pemulihan branch/detached
 HEAD, dry-run, tag anotasi/ringan/ambigu, retag dan push, opt-in deletion, penolakan
-tag remote berbeda tanpa menghentikan push lain, dan dirty working tree.
+tag remote berbeda tanpa menghentikan push lain, dirty working tree, semua branch baru
+(termasuk push), penghapusan branch dengan cadangan, serta `--force` (bersama dan dari root).
 
 ```bash
 cargo test --test syncgit

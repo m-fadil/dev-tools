@@ -16,6 +16,12 @@ pub struct SyncGitOptions {
     pub dry_run: bool,
     pub push: bool,
     pub delete_tags: bool,
+    /// Sync every branch of the source (new ones are created locally); `branches` must be empty.
+    pub all_branches: bool,
+    /// Delete local branches (and, with push, the same names at the destination) that are gone from the source.
+    pub delete_branches: bool,
+    /// Rebuild a branch from the source when its history was rewritten there.
+    pub force: bool,
 }
 
 #[derive(Clone)]
@@ -496,9 +502,9 @@ fn tag_identity(git: &Git, tag: &Tag) -> Result<Option<(String, Env)>> {
     )))
 }
 
-fn destination_tags(git: &Git, remote: &str) -> Result<HashMap<String, String>> {
+fn destination_refs(git: &Git, remote: &str) -> Result<HashMap<String, String>> {
     let mut refs = HashMap::new();
-    let output = git.run(&args!["ls-remote", "--refs", "--tags", "--", remote])?;
+    let output = git.run(&args!["ls-remote", "--refs", "--heads", "--tags", "--", remote])?;
     for line in output.split('\n') {
         if line.is_empty() {
             continue;
@@ -539,6 +545,10 @@ struct Progress {
     plain_tags: Vec<String>,
     moved_tags: Vec<String>,
     deleted_tags: Vec<String>,
+    forced_branches: Vec<String>,
+    deleted_branches: Vec<String>,
+    /// Orphan rebuild under construction (`--force`); renamed over the real branch only after the replay succeeds.
+    temp_branch: Option<String>,
     preserve_recovery: bool,
     switched: bool,
 }
@@ -624,25 +634,410 @@ fn recover_failure(git: &Git, commit: &Commit, branch: &str, progress: &mut Prog
     error
 }
 
+/// Branch names the source remote has, as last fetched into `refs/remotes/<source>/` (the HEAD alias excluded).
+fn source_branches(git: &Git, source: &str) -> Result<Vec<String>> {
+    let prefix = format!("refs/remotes/{source}/");
+    let output = git.run(&args!["for-each-ref", "--format=%(refname)", &prefix])?;
+    let mut names: Vec<String> = output
+        .lines()
+        .filter_map(|reference| reference.strip_prefix(prefix.as_str()))
+        .filter(|name| *name != "HEAD" && !name.starts_with('-'))
+        .map(String::from)
+        .collect();
+    names.sort_unstable();
+    Ok(names)
+}
+
+/// Keeps `hash` reachable under `refs/syncgit-backup/` before a branch is rewritten or deleted.
+fn backup(git: &Git, branch: &str, hash: &str) -> Result<String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs());
+    let reference = format!("refs/syncgit-backup/{stamp}/{branch}");
+    git.run(&args!["update-ref", &reference, hash])?;
+    Ok(reference)
+}
+
+/// Source commit that matches the local tip, or the reason none can be trusted (history rewritten at the source).
+fn find_base(
+    git: &Git,
+    source: &str,
+    branch: &str,
+    source_ref: &str,
+    tip: &Commit,
+) -> Result<std::result::Result<Commit, String>> {
+    let tip_key = key(tip);
+    // Match by the tag identity (tree, author date, subject), not the tree alone: an empty commit shares
+    // its parent's tree, so a tree-only match could select a newer upstream commit and skip it.
+    let mut by_key: Option<Commit> = None;
+    let mut by_tree: Option<Commit> = None;
+    let mut trees = 0usize;
+    git.walk(&[source_ref.to_string()], &[], |commit| {
+        if key(&commit) == tip_key {
+            by_key = Some(commit);
+            return Ok(true);
+        }
+        if commit.tree != tip.tree {
+            return Ok(false);
+        }
+        if by_tree.is_none() {
+            by_tree = Some(commit);
+        }
+        trees += 1;
+        Ok(false)
+    })?;
+    if by_key.is_none() && trees == 0 {
+        return Ok(Err(format!(
+            "tree tip {branch} tidak ditemukan di {source}/{branch}; periksa manual"
+        )));
+    }
+    // Tree-only fallback (e.g. upstream rewrote the tip's subject) is safe only when the tree is unique.
+    if by_key.is_none() && trees > 1 {
+        return Ok(Err(format!(
+            "tip {branch} tidak cocok author date/subject di {source}/{branch} dan tree-nya ambigu ({trees} commit); periksa manual"
+        )));
+    }
+    if by_key.is_none() {
+        warning(&format!(
+            "   author date/subject tip {branch} tidak ditemukan di {source}/{branch}; titik sinkron dipilih lewat tree saja"
+        ));
+    }
+    Ok(by_key
+        .or(by_tree)
+        .ok_or_else(|| "Titik sinkron tidak ditemukan".to_string()))
+}
+
+/// `--force`: the source rewrote `branch`. Resets the local branch to the newest commit both sides still share
+/// (matched by key) and returns that commit's source hash; `None` means nothing is shared and the branch is
+/// rebuilt from the root. The old tip is kept under `refs/syncgit-backup/`.
+fn rebuild_base(
+    git: &Git,
+    options: &SyncGitOptions,
+    branch: &str,
+    local_ref: &str,
+    source_ref: &str,
+    tip: &Commit,
+    progress: &mut Progress,
+) -> Result<Option<String>> {
+    // shortcut: the local history is held in memory; fine for an explicit --force, not for the normal path.
+    let mut local: HashMap<Key, Vec<String>> = HashMap::new();
+    git.walk(&[local_ref.to_string()], &[], |commit| {
+        local.entry(key(&commit)).or_default().push(commit.hash);
+        Ok(false)
+    })?;
+    let mut shared: Option<(String, Vec<String>)> = None;
+    git.walk(&[source_ref.to_string()], &[], |commit| {
+        if let Some(hashes) = local.get(&key(&commit)) {
+            shared = Some((commit.hash, hashes.clone()));
+            return Ok(true);
+        }
+        Ok(false)
+    })?;
+    if let Some((_, hashes)) = &shared
+        && hashes.len() > 1
+    {
+        return fail(format!(
+            "--force: titik bersama {branch} ambigu ({} commit lokal); periksa manual",
+            hashes.len()
+        ));
+    }
+    let base_local = shared.as_ref().map(|(_, hashes)| hashes[0].clone());
+    let dropped = match &base_local {
+        Some(hash) => git.run(&args!["rev-list", "--count", format!("{hash}..{local_ref}")])?,
+        None => git.run(&args!["rev-list", "--count", local_ref])?,
+    };
+    println!(
+        "   --force: history {branch} berubah di sumber; titik bersama: {}; {} commit lokal dilepas (tip lama {})",
+        base_local.as_deref().map_or("(tidak ada, dibangun dari root)", short),
+        dropped.trim(),
+        short(&tip.hash)
+    );
+    if !options.dry_run {
+        let saved = backup(git, branch, &tip.hash)?;
+        println!("   cadangan tip lama: {saved}");
+        git.run(&args!["switch", "--no-guess", "--", branch])?;
+        progress.switched = true;
+        match &base_local {
+            Some(hash) => {
+                git.run(&args!["reset", "--hard", "-q", hash])?;
+            }
+            None => {
+                // Built under a temporary name so the old branch stays intact until the replay succeeds.
+                let temp = format!("syncgit-rebuild/{branch}");
+                if git.exists(&format!("refs/heads/{temp}"))? {
+                    git.run(&args!["branch", "-D", "--", &temp])?;
+                }
+                git.run(&args!["switch", "--orphan", &temp])?;
+                progress.temp_branch = Some(temp);
+            }
+        }
+        progress.forced_branches.push(branch.to_string());
+    }
+    Ok(shared.map(|(hash, _)| hash))
+}
+
+/// Applies `commits` on the checked-out `branch` and requires the result to match the source tree.
+fn replay(
+    git: &Git,
+    options: &SyncGitOptions,
+    branch: &str,
+    local_ref: &str,
+    source_ref: &str,
+    commits: &[Commit],
+    progress: &mut Progress,
+) -> Result<()> {
+    for commit in commits {
+        if let Err(error) = apply_commit(git, commit) {
+            return Err(recover_failure(git, commit, branch, progress, error));
+        }
+    }
+    if git.rev(&format!("{local_ref}^{{tree}}"))? != git.rev(&format!("{source_ref}^{{tree}}"))? {
+        return fail(format!(
+            "PERINGATAN: tree {branch} != {}/{branch}; periksa manual",
+            options.source
+        ));
+    }
+    println!("   OK -> {}", short(&git.rev(local_ref)?));
+    Ok(())
+}
+
+fn list_pending(commits: &[Commit], progress: &mut Progress) {
+    for commit in commits {
+        println!("     {} {}", short(&commit.hash), commit.subject);
+        progress.pending.insert(commit.hash.clone());
+    }
+}
+
+/// `--all-branches`: creates `branch` locally at the commit matching where it forks from the branches already
+/// synced, then brings over only the commits unique to it. Replay is deterministic, so a commit shared with
+/// another branch (even one not synced yet) gets the same hash on both.
+fn create_branch(
+    git: &Git,
+    options: &SyncGitOptions,
+    branch: &str,
+    source_ref: &str,
+    progress: &mut Progress,
+) -> Result<()> {
+    // Source refs of the branches handled so far; in dry-run the new ones among them do not exist locally.
+    let others = progress.synced_branches.clone();
+    let mut range = vec![source_ref.to_string()];
+    if !others.is_empty() {
+        range.push("--not".to_string());
+        range.extend(
+            others
+                .iter()
+                .map(|name| format!("refs/remotes/{}/{name}", options.source)),
+        );
+    }
+    let commits = git.log(&range, &["--reverse", "--topo-order"])?;
+    let fork = match commits.first() {
+        Some(first) => {
+            let parent = git.result(
+                &args!["rev-parse", "--verify", "--quiet", format!("{}^", first.hash)],
+                None,
+                &Vec::new(),
+            )?;
+            (parent.code == 0).then(|| parent.stdout.trim().to_string())
+        }
+        // Same commit as an already synced branch: only the branch ref is new.
+        None => Some(git.rev(source_ref)?),
+    };
+    let mut base_label: Option<String> = None;
+    let base_local = match fork {
+        None => None,
+        Some(parent) if options.dry_run && progress.pending.contains(&parent) => {
+            base_label = Some(format!("{} (cabang dari branch baru, dry-run)", short(&parent)));
+            None
+        }
+        Some(parent) => {
+            let Some(meta) = git.log(&[parent], &["--no-walk"])?.into_iter().next() else {
+                return fail(format!("Metadata titik cabang {branch} tidak ditemukan"));
+            };
+            let wanted = key(&meta);
+            let mut heads: Vec<String> = Vec::new();
+            for name in &others {
+                let reference = format!("refs/heads/{name}");
+                if git.exists(&reference)? {
+                    heads.push(reference);
+                }
+            }
+            let mut found: Vec<String> = Vec::new();
+            git.walk(&heads, &[], |commit| {
+                if key(&commit) == wanted {
+                    found.push(commit.hash);
+                }
+                Ok(false)
+            })?;
+            match found.len() {
+                1 => Some(found.remove(0)),
+                0 => {
+                    return fail(format!(
+                        "titik cabang {branch} ({}) tidak ditemukan di branch lokal yang sudah disinkronkan; periksa manual",
+                        short(&meta.hash)
+                    ));
+                }
+                n => {
+                    return fail(format!(
+                        "titik cabang {branch} ambigu ({n} commit lokal); periksa manual"
+                    ));
+                }
+            }
+        }
+    };
+    println!(
+        "   branch baru; titik cabang: {}; commit baru:",
+        base_label.unwrap_or_else(|| base_local.as_deref().map_or("(root)", short).to_string())
+    );
+    list_pending(&commits, progress);
+    if !options.dry_run {
+        match &base_local {
+            Some(hash) => git.run(&args!["switch", "--no-guess", "-c", branch, hash])?,
+            None => git.run(&args!["switch", "--orphan", branch])?,
+        };
+        progress.switched = true;
+        replay(
+            git,
+            options,
+            branch,
+            &format!("refs/heads/{branch}"),
+            source_ref,
+            &commits,
+            progress,
+        )?;
+    }
+    progress.synced_branches.push(branch.to_string());
+    Ok(())
+}
+
+fn sync_branch(git: &Git, options: &SyncGitOptions, branch: &str, progress: &mut Progress) -> Result<()> {
+    println!("== {branch}");
+    let local_ref = format!("refs/heads/{branch}");
+    let source_ref = format!("refs/remotes/{}/{branch}", options.source);
+    let has_local = git.exists(&local_ref)?;
+    if !git.exists(&source_ref)? || (!has_local && !options.all_branches) {
+        warning(&format!(
+            "   branch lokal atau {}/{branch} tidak ada, lewati",
+            options.source
+        ));
+        return Ok(());
+    }
+    if !has_local {
+        return create_branch(git, options, branch, &source_ref, progress);
+    }
+    let Some(tip) = git.log(std::slice::from_ref(&local_ref), &["-1"])?.into_iter().next() else {
+        return fail(format!("Metadata commit tip {branch} tidak ditemukan"));
+    };
+    let mut forced = false;
+    let base = match find_base(git, &options.source, branch, &source_ref, &tip)? {
+        Ok(base) => Some(base.hash),
+        Err(reason) if options.force => {
+            warning(&format!("   {reason}"));
+            forced = true;
+            rebuild_base(git, options, branch, &local_ref, &source_ref, &tip, progress)?
+        }
+        Err(reason) => return fail(reason),
+    };
+    let range = match &base {
+        Some(hash) => format!("{hash}..{source_ref}"),
+        None => source_ref.clone(),
+    };
+    let commits = git.log(&[range], &["--reverse"])?;
+    if commits.is_empty() && !forced {
+        println!("   sudah terbaru");
+    } else {
+        println!(
+            "   titik sinkron: {}; commit baru:",
+            base.as_deref().map_or("(root)", short)
+        );
+        list_pending(&commits, progress);
+        if !options.dry_run {
+            // A forced rebuild is already on the branch (which may be unborn, so it cannot be switched to).
+            if !forced {
+                git.run(&args!["switch", "--no-guess", "--", branch])?;
+                progress.switched = true;
+            }
+            let work_ref = progress
+                .temp_branch
+                .as_ref()
+                .map_or_else(|| local_ref.clone(), |temp| format!("refs/heads/{temp}"));
+            replay(git, options, branch, &work_ref, &source_ref, &commits, progress)?;
+            if let Some(temp) = progress.temp_branch.take() {
+                git.run(&args!["branch", "-M", &temp, branch])?;
+            }
+        }
+    }
+    progress.synced_branches.push(branch.to_string());
+    Ok(())
+}
+
+/// `--delete-branches`: local branches the source no longer has. The branch checked out at the start is kept.
+fn delete_stale_branches(
+    git: &Git,
+    options: &SyncGitOptions,
+    original: &Original,
+    progress: &mut Progress,
+) -> Result<()> {
+    let present = source_branches(git, &options.source)?;
+    if present.is_empty() {
+        warning(&format!(
+            "   {} tidak punya branch; penghapusan branch dilewati",
+            options.source
+        ));
+        return Ok(());
+    }
+    let heads = git.run(&args!["for-each-ref", "--format=%(refname:strip=2)", "refs/heads"])?;
+    // A branch checked out in any worktree (the main one included) cannot be deleted.
+    let worktrees = git.run(&args!["worktree", "list", "--porcelain"])?;
+    let checked_out: HashSet<&str> = worktrees
+        .lines()
+        .filter_map(|line| line.strip_prefix("branch refs/heads/"))
+        .collect();
+    for name in heads.lines().filter(|name| !present.iter().any(|p| p == name)) {
+        if original.branch.as_deref() == Some(name) || checked_out.contains(name) {
+            warning(&format!(
+                "   {name}: tidak ada di {}, tetapi sedang di-checkout; dilewati",
+                options.source
+            ));
+            continue;
+        }
+        warning(&format!(
+            "   {name}: tidak ada di {}; {}",
+            options.source,
+            if options.dry_run { "akan dihapus" } else { "dihapus" }
+        ));
+        if !options.dry_run {
+            let tip = git.rev(&format!("refs/heads/{name}"))?;
+            backup(git, name, &tip)?;
+            git.run(&args!["branch", "-D", "--", name])?;
+            progress.deleted_branches.push(name.to_string());
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 fn sync_body(
     git: &Git,
     options: &SyncGitOptions,
     branches: &[String],
     namespace: &str,
+    original: &Original,
     progress: &mut Progress,
 ) -> Result<()> {
     println!(">> fetch remote {}", options.source);
+    // Pruning keeps refs/remotes/<source>/ equal to the source's branches, which the full-sync flags act on.
+    let mut fetch = args!["fetch", "-q", "--no-tags"].to_vec();
+    if options.all_branches || options.delete_branches {
+        fetch.push("--prune".to_string());
+    }
     // Explicit destinations prevent remote fetch configuration from writing local heads/tags.
-    git.run(&args![
-        "fetch",
-        "-q",
-        "--no-tags",
+    fetch.extend(args![
         "--refmap=",
         "--",
         &options.source,
         format!("+refs/heads/*:refs/remotes/{}/*", options.source)
-    ])?;
+    ]);
+    git.run(&fetch)?;
     git.run(&args![
         "fetch",
         "-q",
@@ -655,89 +1050,24 @@ fn sync_body(
         format!("+refs/tags/*:{namespace}/*")
     ])?;
 
-    for branch in branches {
-        println!("== {branch}");
-        let local_ref = format!("refs/heads/{branch}");
-        let source_ref = format!("refs/remotes/{}/{branch}", options.source);
-        if !git.exists(&local_ref)? || !git.exists(&source_ref)? {
-            warning(&format!(
-                "   branch lokal atau {}/{branch} tidak ada, lewati",
-                options.source
-            ));
-            continue;
-        }
-        let Some(tip) = git.log(std::slice::from_ref(&local_ref), &["-1"])?.into_iter().next() else {
-            return fail(format!("Metadata commit tip {branch} tidak ditemukan"));
-        };
-        let tip_key = key(&tip);
-        // Match by the tag identity (tree, author date, subject), not the tree alone: an empty commit shares
-        // its parent's tree, so a tree-only match could select a newer upstream commit and skip it.
-        let mut by_key: Option<Commit> = None;
-        let mut by_tree: Option<Commit> = None;
-        let mut trees = 0usize;
-        git.walk(std::slice::from_ref(&source_ref), &[], |commit| {
-            if key(&commit) == tip_key {
-                by_key = Some(commit);
-                return Ok(true);
-            }
-            if commit.tree != tip.tree {
-                return Ok(false);
-            }
-            if by_tree.is_none() {
-                by_tree = Some(commit);
-            }
-            trees += 1;
-            Ok(false)
-        })?;
-        if by_key.is_none() && trees == 0 {
-            return fail(format!(
-                "tree tip {branch} tidak ditemukan di {}/{branch}; periksa manual",
-                options.source
-            ));
-        }
-        // Tree-only fallback (e.g. upstream rewrote the tip's subject) is safe only when the tree is unique.
-        if by_key.is_none() && trees > 1 {
-            return fail(format!(
-                "tip {branch} tidak cocok author date/subject di {}/{branch} dan tree-nya ambigu ({trees} commit); periksa manual",
-                options.source
-            ));
-        }
-        if by_key.is_none() {
-            warning(&format!(
-                "   author date/subject tip {branch} tidak ditemukan di {}/{branch}; titik sinkron dipilih lewat tree saja",
-                options.source
-            ));
-        }
-        let Some(base) = by_key.or(by_tree) else {
-            return fail("Titik sinkron tidak ditemukan");
-        };
-        let commits = git.log(&[format!("{}..{source_ref}", base.hash)], &["--reverse"])?;
-        if commits.is_empty() {
-            println!("   sudah terbaru");
-        } else {
-            println!("   titik sinkron: {}; commit baru:", short(&base.hash));
-            for commit in &commits {
-                println!("     {} {}", short(&commit.hash), commit.subject);
-                progress.pending.insert(commit.hash.clone());
-            }
-            if !options.dry_run {
-                git.run(&args!["switch", "--no-guess", "--", branch])?;
-                progress.switched = true;
-                for commit in &commits {
-                    if let Err(error) = apply_commit(git, commit) {
-                        return Err(recover_failure(git, commit, branch, progress, error));
-                    }
-                }
-                if git.rev(&format!("{local_ref}^{{tree}}"))? != git.rev(&format!("{source_ref}^{{tree}}"))? {
-                    return fail(format!(
-                        "PERINGATAN: tree {branch} != {}/{branch}; periksa manual",
-                        options.source
-                    ));
-                }
-                println!("   OK -> {}", short(&git.rev(&local_ref)?));
+    let branches: Vec<String> = if options.all_branches {
+        // Existing local branches first: new ones are placed relative to them.
+        let mut local: Vec<String> = Vec::new();
+        let mut fresh: Vec<String> = Vec::new();
+        for name in source_branches(git, &options.source)? {
+            if git.exists(&format!("refs/heads/{name}"))? {
+                local.push(name);
+            } else {
+                fresh.push(name);
             }
         }
-        progress.synced_branches.push(branch.clone());
+        local.extend(fresh);
+        local
+    } else {
+        branches.to_vec()
+    };
+    for branch in &branches {
+        sync_branch(git, options, branch, progress)?;
     }
 
     println!("== tag");
@@ -901,6 +1231,9 @@ fn sync_body(
             }
         }
     }
+    if options.delete_branches {
+        delete_stale_branches(git, options, original, progress)?;
+    }
     Ok(())
 }
 
@@ -949,7 +1282,10 @@ pub fn sync_git(options: &SyncGitOptions) -> Result<()> {
     }
     let namespace = format!("refs/syncgit-tags/{}", options.source);
     git.run(&args!["check-ref-format", format!("{namespace}/check")])?;
-    let branches: Vec<String> = if options.branches.is_empty() {
+    let branches: Vec<String> = if options.all_branches {
+        // Resolved by sync_body after the fetch, when the source's branch list is known.
+        Vec::new()
+    } else if options.branches.is_empty() {
         vec![source_default_branch(&repo, &options.source)?]
     } else {
         let mut unique: Vec<String> = Vec::new();
@@ -960,7 +1296,7 @@ pub fn sync_git(options: &SyncGitOptions) -> Result<()> {
         }
         unique
     };
-    if options.branches.is_empty() {
+    if !options.all_branches && options.branches.is_empty() {
         println!(">> branch default {}: {}", options.source, branches[0]);
     }
     for branch in &branches {
@@ -1008,16 +1344,21 @@ pub fn sync_git(options: &SyncGitOptions) -> Result<()> {
         }),
     };
     let observed = if options.push && !options.dry_run {
-        destination_tags(&git, &options.destination)?
+        destination_refs(&git, &options.destination)?
     } else {
         HashMap::new()
     };
     let mut progress = Progress::default();
 
-    if let Err(error) = sync_body(&git, options, &branches, &namespace, &mut progress) {
+    if let Err(error) = sync_body(&git, options, &branches, &namespace, &original, &mut progress) {
         // The operation's error is what the user must act on; a failed restore is only reported.
         if let Err(restore_error) = restore(&git, &original, &progress) {
             warning(&format!("   HEAD awal tidak dapat dipulihkan: {restore_error}"));
+        } else if !progress.preserve_recovery
+            && let Some(temp) = &progress.temp_branch
+        {
+            // The unfinished rebuild is discarded; the original branch was never touched.
+            let _ = git.run(&args!["branch", "-D", "--", temp]);
         }
         return Err(error);
     }
@@ -1028,22 +1369,53 @@ pub fn sync_git(options: &SyncGitOptions) -> Result<()> {
         // Pushes are not atomic. Tag pushes are independent of each other, so one rejected tag does not block the
         // rest; every failure is reported together at the end.
         let mut failures: Vec<String> = Vec::new();
-        let branches_pushed = progress.synced_branches.is_empty() || {
+        let normal: Vec<&String> = progress
+            .synced_branches
+            .iter()
+            .filter(|name| !progress.forced_branches.contains(name))
+            .collect();
+        let mut branches_pushed = true;
+        if !normal.is_empty() {
             let mut a = args!["--", &options.destination].to_vec();
-            a.extend(
-                progress
-                    .synced_branches
-                    .iter()
-                    .map(|b| format!("refs/heads/{b}:refs/heads/{b}")),
-            );
-            push(&git, &mut failures, a)?
-        };
+            a.extend(normal.iter().map(|b| format!("refs/heads/{b}:refs/heads/{b}")));
+            branches_pushed = push(&git, &mut failures, a)?;
+        }
+        // A rebuilt branch is not a fast-forward; the lease pins it to the destination value read at the start.
+        for name in &progress.forced_branches {
+            let reference = format!("refs/heads/{name}");
+            let previous = observed.get(&reference).map(String::as_str).unwrap_or("");
+            branches_pushed &= push(
+                &git,
+                &mut failures,
+                args![
+                    format!("--force-with-lease={reference}:{previous}"),
+                    "--",
+                    &options.destination,
+                    format!("{reference}:{reference}")
+                ],
+            )?;
+        }
         // Tags point at the synced branch commits; without the branches on the destination they are held back.
         if !branches_pushed {
             if !progress.plain_tags.is_empty() || !progress.moved_tags.is_empty() || !progress.deleted_tags.is_empty() {
                 failures.push("push tag dilewati karena push branch gagal".to_string());
             }
         } else {
+            for name in &progress.deleted_branches {
+                let reference = format!("refs/heads/{name}");
+                if let Some(previous) = observed.get(&reference) {
+                    push(
+                        &git,
+                        &mut failures,
+                        args![
+                            format!("--force-with-lease={reference}:{previous}"),
+                            "--",
+                            &options.destination,
+                            format!(":{reference}")
+                        ],
+                    )?;
+                }
+            }
             if !progress.plain_tags.is_empty() {
                 let mut a = args!["--", &options.destination].to_vec();
                 a.extend(

@@ -16,11 +16,17 @@ Tanpa opsi: wizard Inquirer. Dengan opsi: langsung berjalan, cocok untuk CI.
   -p, --push              Push branch dan tag setelah sinkronisasi lokal
   -d, --delete-tags       Hapus SEMUA tag lokal yang tidak ada di sumber;
                          bila --push, hapus juga tag bernama sama di tujuan
+  -a, --all-branches      Sinkron SEMUA branch sumber; branch baru dibuat lokal
+      --delete-branches   Hapus branch lokal yang tidak ada di sumber;
+                         bila --push, hapus juga branch bernama sama di tujuan
+  -f, --force             Bila history branch di-rewrite di sumber, bangun ulang
+                         dari sumber (tip lama dicadangkan; push dengan lease)
+      --mirror            Sama dengan --all-branches --delete-branches --delete-tags
   -i, --interactive       Buka wizard dengan opsi sebagai nilai awal
   -h, --help              Tampilkan bantuan
 
 Tanpa branch: memakai branch default remote sumber (HEAD, mis. main/master).
-Tag lama yang dipindah diperbarui dengan lease; branch tidak pernah force-push.
+Tag lama yang dipindah diperbarui dengan lease; branch hanya di-force-push (dengan lease) bila --force.
 Exit: 0 sukses, 1 gagal, 2 penggunaan salah, 130 dibatalkan.
 Contoh: dt syncgit --repo /path/to/repo -n main
 ";

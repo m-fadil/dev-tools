@@ -31,11 +31,17 @@ Tanpa opsi: wizard Inquirer. Dengan opsi: langsung berjalan, cocok untuk CI.
   -p, --push              Push branch dan tag setelah sinkronisasi lokal
   -d, --delete-tags       Hapus SEMUA tag lokal yang tidak ada di sumber;
                          bila --push, hapus juga tag bernama sama di tujuan
+  -a, --all-branches      Sinkron SEMUA branch sumber; branch baru dibuat lokal
+      --delete-branches   Hapus branch lokal yang tidak ada di sumber;
+                         bila --push, hapus juga branch bernama sama di tujuan
+  -f, --force             Bila history branch di-rewrite di sumber, bangun ulang
+                         dari sumber (tip lama dicadangkan; push dengan lease)
+      --mirror            Sama dengan --all-branches --delete-branches --delete-tags
   -i, --interactive       Buka wizard dengan opsi sebagai nilai awal
   -h, --help              Tampilkan bantuan
 
 Tanpa branch: memakai branch default remote sumber (HEAD, mis. main/master).
-Tag lama yang dipindah diperbarui dengan lease; branch tidak pernah force-push.
+Tag lama yang dipindah diperbarui dengan lease; branch hanya di-force-push (dengan lease) bila --force.
 Exit: 0 sukses, 1 gagal, 2 penggunaan salah, 130 dibatalkan.
 Contoh: dt syncgit --repo /path/to/repo -n main
 ";
@@ -57,6 +63,14 @@ struct Args {
     push: bool,
     #[arg(short = 'd', long = "delete-tags")]
     delete_tags: bool,
+    #[arg(short = 'a', long = "all-branches")]
+    all_branches: bool,
+    #[arg(long = "delete-branches")]
+    delete_branches: bool,
+    #[arg(short = 'f', long)]
+    force: bool,
+    #[arg(long)]
+    mirror: bool,
     #[arg(short = 'i', long)]
     interactive: bool,
     branches: Vec<String>,
@@ -78,6 +92,12 @@ fn parse_syncgit_args(args: Vec<OsString>, cwd: &Path, push_remote: Option<&str>
             branches.push(branch);
         }
     }
+    let all_branches = parsed.all_branches || parsed.mirror;
+    if all_branches && !branches.is_empty() {
+        return Err(usage(
+            "--all-branches/--mirror tidak dapat digabung dengan nama branch.",
+        ));
+    }
     Ok(Parsed {
         interactive: empty || parsed.interactive,
         options: SyncGitOptions {
@@ -92,7 +112,10 @@ fn parse_syncgit_args(args: Vec<OsString>, cwd: &Path, push_remote: Option<&str>
             branches,
             dry_run: parsed.dry_run,
             push: parsed.push,
-            delete_tags: parsed.delete_tags,
+            delete_tags: parsed.delete_tags || parsed.mirror,
+            all_branches,
+            delete_branches: parsed.delete_branches || parsed.mirror,
+            force: parsed.force,
         },
     })
 }
@@ -179,41 +202,48 @@ fn wizard(initial: SyncGitOptions) -> Result<Option<SyncGitOptions>> {
     let mailmap = resolve(&repo_path, mailmap_answer.trim())
         .to_string_lossy()
         .into_owned();
-    let heads = git_lines(&repo, &["for-each-ref", "--format=%(refname:strip=2)", "refs/heads"])?;
-    let missing: Vec<&str> = initial
-        .branches
-        .iter()
-        .filter(|b| !heads.contains(b))
-        .map(String::as_str)
-        .collect();
-    if !missing.is_empty() {
-        eprintln!("Branch lokal tidak ada, tidak dapat dipilih: {}", missing.join(", "));
-    }
-    // Preselect the source's default branch when none were given; a lookup failure only drops the preselection.
-    if initial.branches.is_empty() {
-        println!("Membaca branch default {source} (ls-remote)...");
-    }
-    let preselected: Vec<String> = if initial.branches.is_empty() {
-        vec![source_default_branch(&repo, &source).unwrap_or_default()]
-    } else {
-        initial.branches.clone()
-    };
-    let defaults: Vec<usize> = heads
-        .iter()
-        .enumerate()
-        .filter(|(_, h)| preselected.contains(h))
-        .map(|(i, _)| i)
-        .collect();
-    let branches: Vec<String> = MultiSelect::new("Branch yang disinkronkan", heads.clone())
-        .with_default(&defaults)
-        .with_validator(|selected: &[inquire::list_option::ListOption<&String>]| {
-            Ok(if selected.is_empty() {
-                invalid("Pilih minimal satu branch.")
-            } else {
-                Validation::Valid
-            })
-        })
+    let all_branches = Confirm::new("Sinkron SEMUA branch sumber? Branch baru dibuat di lokal.")
+        .with_default(initial.all_branches)
         .prompt()?;
+    let branches: Vec<String> = if all_branches {
+        Vec::new()
+    } else {
+        let heads = git_lines(&repo, &["for-each-ref", "--format=%(refname:strip=2)", "refs/heads"])?;
+        let missing: Vec<&str> = initial
+            .branches
+            .iter()
+            .filter(|b| !heads.contains(b))
+            .map(String::as_str)
+            .collect();
+        if !missing.is_empty() {
+            eprintln!("Branch lokal tidak ada, tidak dapat dipilih: {}", missing.join(", "));
+        }
+        // Preselect the source's default branch when none were given; a lookup failure only drops the preselection.
+        if initial.branches.is_empty() {
+            println!("Membaca branch default {source} (ls-remote)...");
+        }
+        let preselected: Vec<String> = if initial.branches.is_empty() {
+            vec![source_default_branch(&repo, &source).unwrap_or_default()]
+        } else {
+            initial.branches.clone()
+        };
+        let defaults: Vec<usize> = heads
+            .iter()
+            .enumerate()
+            .filter(|(_, h)| preselected.contains(h))
+            .map(|(i, _)| i)
+            .collect();
+        MultiSelect::new("Branch yang disinkronkan", heads.clone())
+            .with_default(&defaults)
+            .with_validator(|selected: &[inquire::list_option::ListOption<&String>]| {
+                Ok(if selected.is_empty() {
+                    invalid("Pilih minimal satu branch.")
+                } else {
+                    Validation::Valid
+                })
+            })
+            .prompt()?
+    };
     let mode_labels = vec![
         "Preview / dry-run (Recommended)".to_string(),
         "Sinkron lokal saja".to_string(),
@@ -233,14 +263,27 @@ fn wizard(initial: SyncGitOptions) -> Result<Option<SyncGitOptions>> {
     let delete_tags = Confirm::new("Hapus SEMUA tag lokal yang tidak ada di sumber? Termasuk tag buatan manual.")
         .with_default(initial.delete_tags)
         .prompt()?;
+    let delete_branches = Confirm::new("Hapus branch lokal yang tidak ada di sumber?")
+        .with_default(initial.delete_branches)
+        .prompt()?;
+    let force = Confirm::new("Bangun ulang branch dari sumber bila history-nya di-rewrite (--force)?")
+        .with_default(initial.force)
+        .prompt()?;
     println!(
-        "\n{source} -> lokal{}\nRepo: {repo}\nBranch: {}\nMailmap: {mailmap}\n",
+        "\n{source} -> lokal{}\nRepo: {repo}\nBranch: {}\nMailmap: {mailmap}\nHapus tag: {}, hapus branch: {}, force: {}\n",
         if mode == 2 {
             format!(" -> {destination}")
         } else {
             String::new()
         },
-        branches.join(", ")
+        if all_branches {
+            "semua".to_string()
+        } else {
+            branches.join(", ")
+        },
+        if delete_tags { "ya" } else { "tidak" },
+        if delete_branches { "ya" } else { "tidak" },
+        if force { "ya" } else { "tidak" }
     );
     if mode != 0 && !Confirm::new("Jalankan perubahan ini?").with_default(false).prompt()? {
         println!("Dibatalkan; repo lokal dan remote tidak diubah.");
@@ -255,6 +298,9 @@ fn wizard(initial: SyncGitOptions) -> Result<Option<SyncGitOptions>> {
         dry_run: mode == 0,
         push: mode == 2,
         delete_tags,
+        all_branches,
+        delete_branches,
+        force,
     }))
 }
 
@@ -312,6 +358,9 @@ mod tests {
                 dry_run: true,
                 push: false,
                 delete_tags: false,
+                all_branches: false,
+                delete_branches: false,
+                force: false,
             }
         );
     }
@@ -355,6 +404,24 @@ mod tests {
             let o = opts(&args);
             assert!(o.dry_run && o.push && o.delete_tags, "{args:?}");
         }
+    }
+
+    #[test]
+    fn full_sync_flags_work_alone_and_combined() {
+        let all = opts(&["-a"]);
+        assert!(all.all_branches && !all.delete_branches && !all.force && !all.delete_tags);
+        assert!(opts(&["-f"]).force);
+        assert!(opts(&["--delete-branches"]).delete_branches);
+        let combined = opts(&["-af", "--delete-branches"]);
+        assert!(combined.all_branches && combined.force && combined.delete_branches);
+    }
+
+    #[test]
+    fn mirror_expands_to_full_sync_and_conflicts_with_branch_names() {
+        let o = opts(&["--mirror"]);
+        assert!(o.all_branches && o.delete_branches && o.delete_tags && !o.force);
+        assert!(matches!(parse(&["--mirror", "main"], None), Err(CliError::Usage(_))));
+        assert!(matches!(parse(&["-a", "main"], None), Err(CliError::Usage(_))));
     }
 
     #[test]

@@ -48,6 +48,9 @@ struct Sync {
     push: bool,
     dry_run: bool,
     delete_tags: bool,
+    all: bool,
+    delete_branches: bool,
+    force: bool,
 }
 
 impl Fixture {
@@ -137,7 +140,17 @@ impl Fixture {
         if opts.delete_tags {
             args.push("-d");
         }
-        args.push("develop");
+        if opts.all {
+            args.push("-a");
+        } else {
+            args.push("develop");
+        }
+        if opts.delete_branches {
+            args.push("--delete-branches");
+        }
+        if opts.force {
+            args.push("-f");
+        }
         let env: Vec<(&str, &str)> = self.env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         dt_env(&args, b"", &env)
     }
@@ -327,6 +340,7 @@ fn dry_run_does_not_change_heads_tags_checkout_or_destination_even_with_push_and
         dry_run: true,
         push: true,
         delete_tags: true,
+        ..Sync::default()
     });
     assert_eq!(f.refs(&f.work), local_before);
     assert_eq!(f.refs(&f.destination), remote_before);
@@ -589,4 +603,281 @@ fn unfinished_git_operations_are_rejected_before_fetching_or_changing_refs() {
             std::fs::remove_file(&path).unwrap();
         }
     }
+}
+
+#[test]
+fn all_branches_creates_new_source_branches_at_their_fork_point_and_pushes_them() {
+    let f = fixture();
+    f.git(&f.source, &["switch", "-q", "-c", "feature"]);
+    f.commit("f1", "1\n", D2, D2);
+    f.commit("f2", "2\n", D3, D3);
+    f.git(&f.source, &["tag", "v1"]);
+    let before = f.refs(&f.work);
+    let r = f.run(&Sync {
+        all: true,
+        dry_run: true,
+        push: true,
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.contains("branch baru"), "{}", r.out);
+    assert_eq!(f.refs(&f.work), before);
+    f.sync(&Sync {
+        all: true,
+        push: true,
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["log", "--format=%s", "feature"]), "f2\nf1\ninitial");
+    assert_eq!(f.git(&f.work, &["rev-parse", "feature~2"]), f.initial);
+    let tip = f.git(&f.work, &["rev-parse", "feature"]);
+    assert_eq!(f.git(&f.destination, &["rev-parse", "feature"]), tip);
+    assert_eq!(f.git(&f.destination, &["rev-parse", "v1"]), tip);
+    assert_eq!(f.git(&f.work, &["symbolic-ref", "HEAD"]), "refs/heads/develop");
+}
+
+#[test]
+fn delete_branches_removes_stale_local_and_destination_branches_but_keeps_a_backup() {
+    let f = fixture();
+    f.git(&f.work, &["branch", "stale"]);
+    f.git(&f.work, &["push", "-q", "origin", "develop", "stale"]);
+    f.sync(&Sync {
+        all: true,
+        ..Sync::default()
+    });
+    assert_eq!(
+        f.git(&f.work, &["branch", "--format=%(refname:short)"]),
+        "develop\nstale"
+    );
+    f.sync(&Sync {
+        all: true,
+        delete_branches: true,
+        push: true,
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["branch", "--format=%(refname:short)"]), "develop");
+    assert_eq!(
+        f.git(&f.destination, &["branch", "--format=%(refname:short)"]),
+        "develop"
+    );
+    assert!(
+        f.git(&f.work, &["for-each-ref", "refs/syncgit-backup"])
+            .ends_with("/stale")
+    );
+}
+
+#[test]
+fn force_rebuilds_a_branch_the_source_rewrote_and_pushes_it_with_a_lease() {
+    let f = fixture();
+    f.commit("one", "1\n", D2, D2);
+    f.sync(&Sync {
+        push: true,
+        ..Sync::default()
+    });
+    let old = f.git(&f.work, &["rev-parse", "develop"]);
+    f.git(&f.source, &["reset", "-q", "--hard", "HEAD~1"]);
+    f.commit("rewritten", "9\n", D3, D3);
+    let before = f.refs(&f.work);
+    let r = f.run(&Sync::default());
+    assert_eq!(r.code, 1);
+    assert!(r.err.contains("tree tip develop tidak ditemukan"), "{}", r.err);
+    assert_eq!(f.refs(&f.work), before);
+    f.sync(&Sync {
+        push: true,
+        force: true,
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["log", "--format=%s", "develop"]), "rewritten\ninitial");
+    assert_eq!(
+        f.git(&f.work, &["rev-parse", "develop^{tree}"]),
+        f.git(&f.source, &["rev-parse", "HEAD^{tree}"])
+    );
+    assert_eq!(
+        f.git(
+            &f.work,
+            &["for-each-ref", "--format=%(objectname)", "refs/syncgit-backup"]
+        ),
+        old
+    );
+    assert_eq!(
+        f.git(&f.destination, &["rev-parse", "develop"]),
+        f.git(&f.work, &["rev-parse", "develop"])
+    );
+}
+
+#[test]
+fn force_rebuilds_from_the_root_when_nothing_is_shared_with_the_source() {
+    let f = fixture();
+    f.git(&f.source, &["switch", "-q", "--orphan", "fresh"]);
+    f.commit("fresh", "7\n", D2, D2);
+    f.git(&f.source, &["branch", "-q", "-M", "develop"]);
+    f.sync(&Sync {
+        force: true,
+        push: true,
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["log", "--format=%s", "develop"]), "fresh");
+    assert_eq!(
+        f.git(
+            &f.work,
+            &["for-each-ref", "--format=%(objectname)", "refs/syncgit-backup"]
+        ),
+        f.initial
+    );
+    assert_eq!(f.git(&f.work, &["symbolic-ref", "HEAD"]), "refs/heads/develop");
+    assert_eq!(f.git(&f.work, &["branch", "--format=%(refname:short)"]), "develop");
+    // The destination had no develop: the lease must accept "absent".
+    assert_eq!(
+        f.git(&f.destination, &["rev-parse", "develop"]),
+        f.git(&f.work, &["rev-parse", "develop"])
+    );
+}
+
+/// Source: develop has d1 (not synced locally yet); feature forks from it with f1; feature2 forks from feature with g1.
+fn chained() -> Fixture {
+    let f = fixture();
+    f.commit("d1", "1\n", D2, D2);
+    f.git(&f.source, &["switch", "-q", "-c", "feature"]);
+    f.commit("f1", "2\n", D3, D3);
+    f.git(&f.source, &["switch", "-q", "-c", "feature2"]);
+    f.commit("g1", "3\n", D3, D3);
+    f
+}
+
+#[test]
+fn a_new_branch_forks_from_the_local_commit_matching_its_parent_even_across_new_branches() {
+    let f = chained();
+    let r = f.run(&Sync {
+        all: true,
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 0, "{}", r.err);
+    let develop = f.git(&f.work, &["rev-parse", "develop"]);
+    let feature = f.git(&f.work, &["rev-parse", "feature"]);
+    assert_eq!(f.git(&f.work, &["rev-parse", "feature~1"]), develop);
+    assert_eq!(f.git(&f.work, &["rev-parse", "feature2~1"]), feature);
+    assert_eq!(f.git(&f.work, &["rev-list", "--count", "feature..feature2"]), "1");
+    assert!(r.out.contains(&format!("titik cabang: {}", &develop[..7])), "{}", r.out);
+    assert!(r.out.contains(&format!("titik cabang: {}", &feature[..7])), "{}", r.out);
+}
+
+#[test]
+fn dry_run_reports_a_branch_forking_from_a_new_branch_without_creating_anything() {
+    let f = chained();
+    let before = f.refs(&f.work);
+    let r = f.run(&Sync {
+        all: true,
+        dry_run: true,
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.contains("cabang dari branch baru, dry-run"), "{}", r.out);
+    assert!(!r.out.contains("(root)"), "{}", r.out);
+    assert_eq!(r.out.matches(" f1\n").count(), 1, "{}", r.out);
+    assert_eq!(f.refs(&f.work), before);
+}
+
+#[test]
+fn all_branches_creates_a_source_branch_without_shared_history_from_its_root() {
+    let f = fixture();
+    f.git(&f.source, &["switch", "-q", "--orphan", "lonely"]);
+    f.commit("solo", "5\n", D2, D2);
+    f.sync(&Sync {
+        all: true,
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["log", "--format=%s", "lonely"]), "solo");
+    assert_eq!(f.git(&f.work, &["log", "--format=%s", "develop"]), "initial");
+    assert_eq!(f.git(&f.work, &["symbolic-ref", "HEAD"]), "refs/heads/develop");
+}
+
+#[test]
+fn force_with_dry_run_reports_the_rebuild_and_changes_nothing() {
+    let f = fixture();
+    f.commit("one", "1\n", D2, D2);
+    f.sync(&Sync::default());
+    f.git(&f.source, &["reset", "-q", "--hard", "HEAD~1"]);
+    f.commit("rewritten", "9\n", D3, D3);
+    let before = f.refs(&f.work);
+    let r = f.run(&Sync {
+        force: true,
+        dry_run: true,
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.contains("--force: history develop berubah"), "{}", r.out);
+    assert_eq!(f.refs(&f.work), before);
+    assert_eq!(f.git(&f.work, &["for-each-ref", "refs/syncgit-backup"]), "");
+}
+
+#[test]
+fn a_rejected_forced_branch_push_is_reported_and_the_rebuild_stays_local() {
+    let f = fixture();
+    f.commit("one", "1\n", D2, D2);
+    f.sync(&Sync {
+        push: true,
+        ..Sync::default()
+    });
+    let old = f.git(&f.destination, &["rev-parse", "develop"]);
+    f.git(&f.destination, &["config", "receive.denyNonFastForwards", "true"]);
+    f.git(&f.source, &["reset", "-q", "--hard", "HEAD~1"]);
+    f.commit("rewritten", "9\n", D3, D3);
+    let r = f.run(&Sync {
+        push: true,
+        force: true,
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 1);
+    assert!(r.err.contains("Push gagal"), "{}", r.err);
+    assert_eq!(f.git(&f.work, &["log", "--format=%s", "develop"]), "rewritten\ninitial");
+    assert_eq!(f.git(&f.destination, &["rev-parse", "develop"]), old);
+}
+
+#[test]
+fn delete_branches_keeps_branches_checked_out_in_the_main_checkout_or_another_worktree() {
+    let f = fixture();
+    f.git(&f.work, &["switch", "-q", "-c", "wip"]);
+    let tree = f.work.parent().unwrap().join("tree");
+    f.git(
+        &f.work,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            tree.to_str().unwrap(),
+            "-b",
+            "other",
+            "develop",
+        ],
+    );
+    f.git(&f.work, &["branch", "stale", "develop"]);
+    f.sync(&Sync {
+        all: true,
+        delete_branches: true,
+        ..Sync::default()
+    });
+    assert_eq!(
+        f.git(&f.work, &["branch", "--format=%(refname:short)"]),
+        "develop\nother\nwip"
+    );
+    assert_eq!(f.git(&f.work, &["symbolic-ref", "HEAD"]), "refs/heads/wip");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_failed_orphan_rebuild_leaves_the_old_branch_untouched() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = fixture();
+    f.git(&f.source, &["switch", "-q", "--orphan", "fresh"]);
+    f.commit("fresh", "7\n", D2, D2);
+    f.git(&f.source, &["branch", "-q", "-M", "develop"]);
+    let hook = f.work.join(".git/hooks/pre-commit");
+    std::fs::create_dir_all(hook.parent().unwrap()).unwrap();
+    std::fs::write(&hook, "#!/bin/sh\nexit 1\n").unwrap();
+    std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let r = f.run(&Sync {
+        force: true,
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 1, "{}", r.err);
+    assert_eq!(f.git(&f.work, &["rev-parse", "refs/heads/develop"]), f.initial);
 }
