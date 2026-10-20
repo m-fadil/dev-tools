@@ -547,6 +547,8 @@ struct Progress {
     deleted_tags: Vec<String>,
     forced_branches: Vec<String>,
     deleted_branches: Vec<String>,
+    /// Dry run only: branches that would start from a destination ref (`name`, ref), as no local branch exists.
+    adopted: Vec<(String, String)>,
     /// Orphan rebuild under construction (`--force`); renamed over the real branch only after the replay succeeds.
     temp_branch: Option<String>,
     preserve_recovery: bool,
@@ -859,6 +861,8 @@ fn create_branch(
                 let reference = format!("refs/heads/{name}");
                 if git.exists(&reference)? {
                     heads.push(reference);
+                } else if let Some((_, adopted)) = progress.adopted.iter().find(|(adopted, _)| adopted == name) {
+                    heads.push(adopted.clone());
                 }
             }
             let mut found: Vec<String> = Vec::new();
@@ -909,11 +913,20 @@ fn create_branch(
     Ok(())
 }
 
+/// `refs/remotes/<destination>/<branch>` when `-a` may start the local branch from it (it already holds the branch).
+fn adoptable(git: &Git, options: &SyncGitOptions, branch: &str) -> Result<Option<String>> {
+    if !options.all_branches || options.destination == options.source {
+        return Ok(None);
+    }
+    let reference = format!("refs/remotes/{}/{branch}", options.destination);
+    Ok(git.exists(&reference)?.then_some(reference))
+}
+
 fn sync_branch(git: &Git, options: &SyncGitOptions, branch: &str, progress: &mut Progress) -> Result<()> {
     println!("== {branch}");
     let local_ref = format!("refs/heads/{branch}");
     let source_ref = format!("refs/remotes/{}/{branch}", options.source);
-    let has_local = git.exists(&local_ref)?;
+    let mut has_local = git.exists(&local_ref)?;
     if !git.exists(&source_ref)? || (!has_local && !options.all_branches) {
         warning(&format!(
             "   branch lokal atau {}/{branch} tidak ada, lewati",
@@ -921,10 +934,35 @@ fn sync_branch(git: &Git, options: &SyncGitOptions, branch: &str, progress: &mut
         ));
         return Ok(());
     }
+    // `-a`: a branch only the destination has is started from there, so the sync is incremental.
+    // Only when its tip still matches the source; otherwise it is created from the fork point as usual.
+    let mut tip_ref = local_ref.clone();
+    if !has_local && let Some(adopted) = adoptable(git, options, branch)? {
+        let usable = match git.log(std::slice::from_ref(&adopted), &["-1"])?.into_iter().next() {
+            Some(tip) => find_base(git, &options.source, branch, &source_ref, &tip)?.is_ok(),
+            None => false,
+        };
+        let label = adopted.trim_start_matches("refs/remotes/").to_string();
+        if usable {
+            println!("   branch lokal belum ada; memakai {label}");
+            if options.dry_run {
+                // No branch is created, so later fork points and tag matching must look at this ref instead.
+                progress.adopted.push((branch.to_string(), adopted.clone()));
+                tip_ref = adopted;
+            } else {
+                git.run(&args!["branch", "--no-track", "--", branch, &adopted])?;
+            }
+            has_local = true;
+        } else {
+            warning(&format!(
+                "   {label} tidak cocok dengan sumber; dibuat dari titik cabang"
+            ));
+        }
+    }
     if !has_local {
         return create_branch(git, options, branch, &source_ref, progress);
     }
-    let Some(tip) = git.log(std::slice::from_ref(&local_ref), &["-1"])?.into_iter().next() else {
+    let Some(tip) = git.log(std::slice::from_ref(&tip_ref), &["-1"])?.into_iter().next() else {
         return fail(format!("Metadata commit tip {branch} tidak ditemukan"));
     };
     let mut forced = false;
@@ -933,7 +971,7 @@ fn sync_branch(git: &Git, options: &SyncGitOptions, branch: &str, progress: &mut
         Err(reason) if options.force => {
             warning(&format!("   {reason}"));
             forced = true;
-            rebuild_base(git, options, branch, &local_ref, &source_ref, &tip, progress)?
+            rebuild_base(git, options, branch, &tip_ref, &source_ref, &tip, progress)?
         }
         Err(reason) => return fail(reason),
     };
@@ -1055,7 +1093,7 @@ fn sync_body(
         let mut local: Vec<String> = Vec::new();
         let mut fresh: Vec<String> = Vec::new();
         for name in source_branches(git, &options.source)? {
-            if git.exists(&format!("refs/heads/{name}"))? {
+            if git.exists(&format!("refs/heads/{name}"))? || adoptable(git, options, &name)?.is_some() {
                 local.push(name);
             } else {
                 fresh.push(name);
@@ -1095,6 +1133,8 @@ fn sync_body(
         let reference = format!("refs/heads/{branch}");
         if git.exists(&reference)? {
             heads.push(reference);
+        } else if let Some((_, adopted)) = progress.adopted.iter().find(|(name, _)| *name == branch) {
+            heads.push(adopted.clone());
         }
     }
     let mut index: HashMap<Key, Vec<String>> = HashMap::new();

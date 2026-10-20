@@ -139,7 +139,9 @@ dikirim ke remote tujuan memakai identitas terpetakan; sumber tidak di-push.
 - Penghapusan tag mencakup **semua** tag lokal yang tidak ada di sumber, termasuk
   tag manual. Dengan push, nama tersebut juga dihapus di tujuan menggunakan lease.
   Tag yang hanya ada di tujuan (tidak ada lokal) tidak dihapus.
-- `--all-branches`: branch sumber yang belum ada lokal dibuat di titik cabangnya. Titik
+- `--all-branches`: branch sumber yang belum ada lokal tetapi sudah ada di tujuan
+  (`refs/remotes/<tujuan>/<branch>`, hasil fetch terakhir) dimulai dari branch tujuan itu, sehingga hanya
+  commit yang belum ada di tujuan yang dibawa. Selain itu dibuat di titik cabangnya. Titik
   cabang = induk commit paling awal yang unik bagi branch itu, dipadankan (tree + author
   date + subject) ke branch lokal yang sudah disinkronkan; hanya commit unik yang dibawa.
   Replay deterministik, jadi commit yang sama di dua branch memiliki hash sama. Branch

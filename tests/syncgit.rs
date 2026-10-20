@@ -636,6 +636,91 @@ fn all_branches_creates_new_source_branches_at_their_fork_point_and_pushes_them(
 }
 
 #[test]
+fn all_branches_starts_a_missing_local_branch_from_the_destination_and_syncs_only_the_delta() {
+    let f = fixture();
+    f.git(&f.source, &["switch", "-q", "-c", "feature"]);
+    f.commit("f1", "1\n", D2, D2);
+    f.sync(&Sync {
+        all: true,
+        push: true,
+        ..Sync::default()
+    });
+    let pushed = f.git(&f.destination, &["rev-parse", "feature"]);
+    f.git(&f.work, &["branch", "-q", "-D", "feature"]);
+    f.commit("f2", "2\n", D3, D3);
+    let r = f.run(&Sync {
+        all: true,
+        dry_run: true,
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.contains("memakai origin/feature"), "{}", r.out);
+    assert!(!r.out.contains("branch baru"), "{}", r.out);
+    assert!(
+        f.git_try(&f.work, &["rev-parse", "--verify", "refs/heads/feature"], &[])
+            .is_err()
+    );
+    f.sync(&Sync {
+        all: true,
+        push: true,
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["rev-parse", "feature~1"]), pushed);
+    assert_eq!(
+        f.git(&f.destination, &["rev-parse", "feature"]),
+        f.git(&f.work, &["rev-parse", "feature"])
+    );
+}
+
+#[test]
+fn all_branches_ignores_an_unrelated_destination_branch_and_forks_from_the_source_history() {
+    let f = fixture();
+    f.git(&f.source, &["switch", "-q", "-c", "feature"]);
+    f.commit("f1", "1\n", D2, D2);
+    f.sync(&Sync {
+        all: true,
+        push: true,
+        ..Sync::default()
+    });
+    let pushed = f.git(&f.destination, &["rev-parse", "feature"]);
+    f.git(&f.work, &["branch", "-q", "-D", "feature"]);
+    let unrelated = f.git(
+        &f.work,
+        &["commit-tree", "-m", "x", "4b825dc642cb6eb9a060e54bf8d69288fbee4904"],
+    );
+    f.git(&f.work, &["update-ref", "refs/remotes/origin/feature", &unrelated]);
+    let r = f.run(&Sync {
+        all: true,
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.err.contains("tidak cocok dengan sumber"), "{}", r.err);
+    assert_eq!(f.git(&f.work, &["rev-parse", "feature"]), pushed);
+}
+
+#[test]
+fn dry_run_all_branches_places_a_new_branch_forked_from_an_adopted_one() {
+    let f = fixture();
+    f.git(&f.source, &["switch", "-q", "-c", "feature"]);
+    f.commit("f1", "1\n", D2, D2);
+    f.sync(&Sync {
+        all: true,
+        push: true,
+        ..Sync::default()
+    });
+    f.git(&f.work, &["branch", "-q", "-D", "feature"]);
+    f.git(&f.source, &["switch", "-q", "-c", "child"]);
+    f.commit("c1", "2\n", D3, D3);
+    let r = f.run(&Sync {
+        all: true,
+        dry_run: true,
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.contains("c1"), "{}", r.out);
+}
+
+#[test]
 fn delete_branches_removes_stale_local_and_destination_branches_but_keeps_a_backup() {
     let f = fixture();
     f.git(&f.work, &["branch", "stale"]);
