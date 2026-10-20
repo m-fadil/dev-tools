@@ -7,7 +7,7 @@ Kumpulan alat praktis untuk pekerjaan sehari-hari, cukup dengan perintah `dt`.
 Pilih salah satu: skrip pemasang, kompilasi dari sumber dengan Cargo, unduh
 binary siap pakai, atau gunakan Docker. Untuk `syncgit` diperlukan [Git](https://git-scm.com/).
 
-### Skrip pemasang (Linux dan macOS)
+### Skrip pemasang (Linux)
 
 Mengunduh binary sesuai OS dan arsitektur, memverifikasi checksum, lalu
 memasangnya ke `~/.local/bin`:
@@ -32,8 +32,7 @@ Pengaturan lewat variabel lingkungan:
 
 Versi juga bisa diberikan sebagai argumen: `... | sh -s -- vX.Y.Z`. Jalankan
 ulang untuk memperbarui. Di Linux yang dipasang adalah build musl (statis).
-Pastikan `~/.local/bin` ada di `PATH`. Di Windows, unduh arsip `.zip` dari
-halaman rilis.
+Pastikan `~/.local/bin` ada di `PATH`.
 
 ### Dengan Cargo
 
@@ -58,12 +57,8 @@ menyertakan binary `dt` tanpa dependensi tambahan:
 | Linux (glibc) | arm64 | `dt-v<versi>-aarch64-unknown-linux-gnu.tar.gz` |
 | Linux (musl, statis) | x64 | `dt-v<versi>-x86_64-unknown-linux-musl.tar.gz` |
 | Linux (musl, statis) | arm64 | `dt-v<versi>-aarch64-unknown-linux-musl.tar.gz` |
-| macOS | x64 | `dt-v<versi>-x86_64-apple-darwin.tar.gz` |
-| macOS | arm64 (Apple Silicon) | `dt-v<versi>-aarch64-apple-darwin.tar.gz` |
-| Windows | x64 | `dt-v<versi>-x86_64-pc-windows-msvc.zip` |
-| Windows | arm64 | `dt-v<versi>-aarch64-pc-windows-msvc.zip` |
 
-Ekstrak arsip, lalu letakkan `dt` (atau `dt.exe`) di folder yang ada di `PATH`.
+Ekstrak arsip, lalu letakkan `dt` di folder yang ada di `PATH`.
 Berkas `SHA256SUMS` pada rilis berisi checksum semua arsip:
 
 ```bash

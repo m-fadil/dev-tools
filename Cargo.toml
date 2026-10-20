@@ -47,9 +47,6 @@ tar = { version = "0.4.46", default-features = false }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
-[target."cfg(windows)".dependencies]
-zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2"] }
-
 [dev-dependencies]
 tempfile = "3"
 
@@ -63,9 +60,3 @@ panic = "abort"
 pkg-url = "{ repo }/releases/download/v{ version }/dt-v{ version }-{ target }.{ archive-format }"
 bin-dir = "dt-v{ version }-{ target }/{ bin }{ binary-ext }"
 pkg-fmt = "tgz"
-
-[package.metadata.binstall.overrides.x86_64-pc-windows-msvc]
-pkg-fmt = "zip"
-
-[package.metadata.binstall.overrides.aarch64-pc-windows-msvc]
-pkg-fmt = "zip"

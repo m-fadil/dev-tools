@@ -60,9 +60,7 @@ detect_target() {
     esac
     case "$os" in
         Linux) printf '%s-unknown-linux-musl' "$arch" ;;
-        Darwin) printf '%s-apple-darwin' "$arch" ;;
-        MINGW* | MSYS* | CYGWIN*) die "di Windows, unduh arsip .zip dari halaman rilis: https://github.com/$REPO/releases" ;;
-        *) die "sistem operasi tidak didukung: $os" ;;
+        *) die "sistem operasi tidak didukung: $os (rilis hanya untuk Linux)" ;;
     esac
 }
 

@@ -53,10 +53,6 @@ jobs:
           - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
           - { target: x86_64-unknown-linux-musl, os: ubuntu-latest }
           - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm }
-          - { target: x86_64-apple-darwin, os: macos-15-intel }
-          - { target: aarch64-apple-darwin, os: macos-latest }
-          - { target: x86_64-pc-windows-msvc, os: windows-latest }
-          - { target: aarch64-pc-windows-msvc, os: windows-11-arm }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -76,7 +72,6 @@ jobs:
         shell: bash
         run: |
           exe=target/${{ matrix.target }}/release/dt
-          if [ "${{ runner.os }}" = "Windows" ]; then exe="$exe.exe"; fi
           "$exe" --help
           test "$("$exe" hash abc)" = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
       - name: package
@@ -87,24 +82,11 @@ jobs:
         run: |
           name="dt-${TAG}-${TARGET}"
           mkdir "$name"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${TARGET}/release/dt.exe" "$name/"
-          else
-            cp "target/${TARGET}/release/dt" "$name/"
-          fi
+          cp "target/${TARGET}/release/dt" "$name/"
           cp README.md "$name/"
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            archive="$name.zip"
-            7z a -tzip "$archive" "$name"
-          else
-            archive="$name.tar.gz"
-            tar czf "$archive" "$name"
-          fi
-          if command -v sha256sum >/dev/null; then
-            sha256sum "$archive" > "$archive.sha256"
-          else
-            shasum -a 256 "$archive" > "$archive.sha256"
-          fi
+          archive="$name.tar.gz"
+          tar czf "$archive" "$name"
+          sha256sum "$archive" > "$archive.sha256"
           echo "ARCHIVE=$archive" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
@@ -143,9 +125,7 @@ jobs:
       - name: attest provenance
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: |
-            dt-*.tar.gz
-            dt-*.zip
+          subject-path: dt-*.tar.gz
       - name: create release
         env:
           GH_TOKEN: ${{ github.token }}

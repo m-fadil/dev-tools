@@ -4,7 +4,7 @@ use crate::errors::{CliError, Result};
 #[derive(Debug, PartialEq, Eq)]
 pub struct Target {
     pub triple: String,
-    /// Archive extension: `tar.gz` everywhere except Windows (`zip`).
+    /// Archive extension of the release asset.
     pub ext: &'static str,
     /// Name of the executable inside the archive.
     pub bin: &'static str,
@@ -24,10 +24,6 @@ const fn arch() -> Option<&'static str> {
 const fn os() -> Option<(&'static str, &'static str, &'static str)> {
     if cfg!(target_os = "linux") {
         Some(("unknown-linux-musl", "tar.gz", "dt"))
-    } else if cfg!(target_os = "macos") {
-        Some(("apple-darwin", "tar.gz", "dt"))
-    } else if cfg!(target_os = "windows") {
-        Some(("pc-windows-msvc", "zip", "dt.exe"))
     } else {
         None
     }

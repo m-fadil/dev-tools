@@ -45,7 +45,6 @@ fn copy_binary(entry: &mut impl Read, out: &mut File, bin: &str) -> Result<()> {
 }
 
 /// Copies `<stem>/dt` out of the `.tar.gz` into `out`.
-#[cfg(not(windows))]
 pub fn extract(archive: &Path, stem: &str, bin: &str, out: &mut File) -> Result<()> {
     let ctx = |e: std::io::Error| failed(format!("Gagal mengekstrak {stem}.tar.gz: {e}"));
     let file = File::open(archive).map_err(ctx)?;
@@ -57,26 +56,6 @@ pub fn extract(archive: &Path, stem: &str, bin: &str, out: &mut File) -> Result<
             continue;
         }
         let hit = entry.path().map_err(ctx)? == wanted;
-        if hit {
-            return copy_binary(&mut entry, out, bin);
-        }
-    }
-    Err(failed(format!("Arsip tidak berisi {bin}.")))
-}
-
-/// Copies `<stem>/dt.exe` out of the `.zip` into `out`.
-#[cfg(windows)]
-pub fn extract(archive: &Path, stem: &str, bin: &str, out: &mut File) -> Result<()> {
-    let ctx = |e: &dyn std::fmt::Display| failed(format!("Gagal mengekstrak {stem}.zip: {e}"));
-    let file = File::open(archive).map_err(|e| ctx(&e))?;
-    let mut zip = zip::ZipArchive::new(file).map_err(|e| ctx(&e))?;
-    let wanted = Path::new(stem).join(bin);
-    for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).map_err(|e| ctx(&e))?;
-        if !entry.is_file() {
-            continue;
-        }
-        let hit = entry.enclosed_name().is_some_and(|p| p == wanted);
         if hit {
             return copy_binary(&mut entry, out, bin);
         }

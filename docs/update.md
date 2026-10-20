@@ -22,14 +22,12 @@ dt update [--check] [--version <tag>] [--force] [--json]
 2. **Perbandingan.** Versi dibandingkan dengan aturan SemVer (`dt semver`). Tanpa `--version`, pembaruan hanya dipasang
    jika versi terbaru lebih tinggi dari versi saat ini. Dengan `--version`, versi yang berbeda selalu dipasang (juga
    versi yang lebih lama); versi yang sama dilewati kecuali ada `--force`.
-3. **Unduh.** `dt-<tag>-<target>.tar.gz` (Windows: `.zip`) dan `.sha256`-nya diunduh ke folder sementara.
+3. **Unduh.** `dt-<tag>-<target>.tar.gz` dan `.sha256`-nya diunduh ke folder sementara.
 4. **Verifikasi.** SHA-256 arsip dihitung di dalam proses dan dibandingkan dengan isi `.sha256`. Tidak cocok: proses
    dibatalkan dan tidak ada yang diganti.
-5. **Ekstrak.** Berkas `dt-<tag>-<target>/dt` (Windows: `dt.exe`) diekstrak langsung ke berkas sementara di folder yang
-   sama dengan binary tujuan, lalu diberi mode `0755` (Unix).
-6. **Ganti.** Binary yang sedang berjalan (symlink diikuti sampai berkas aslinya) diganti dengan `rename` atomik. Di
-   Windows binary lama dipindah dulu ke `dt.exe.old` lalu yang baru dipasang; `.old` dihapus bila bisa, atau pada
-   pembaruan berikutnya.
+5. **Ekstrak.** Berkas `dt-<tag>-<target>/dt` diekstrak langsung ke berkas sementara di folder yang
+   sama dengan binary tujuan, lalu diberi mode `0755`.
+6. **Ganti.** Binary yang sedang berjalan (symlink diikuti sampai berkas aslinya) diganti dengan `rename` atomik.
 
 Folder sementara dan berkas perantara selalu dibersihkan, juga saat gagal; binary lama tidak pernah dibiarkan setengah
 tertulis.
@@ -38,18 +36,16 @@ tertulis.
 
 Dipilih saat kompilasi, sama dengan `install.sh`:
 
-| Platform | Aset                                                              |
-| -------- | ----------------------------------------------------------------- |
+| Platform | Aset                                                                  |
+| -------- | --------------------------------------------------------------------- |
 | Linux    | `x86_64-unknown-linux-musl`, `aarch64-unknown-linux-musl` (`.tar.gz`) |
-| macOS    | `x86_64-apple-darwin`, `aarch64-apple-darwin` (`.tar.gz`)         |
-| Windows  | `x86_64-pc-windows-msvc`, `aarch64-pc-windows-msvc` (`.zip`)      |
 
 Arsitektur atau OS lain menghasilkan error (exit 1). Binary hasil `cargo install` ikut diganti dengan build rilis
 (di Linux: build musl), bukan dibangun ulang dari sumber.
 
 ## Kebutuhan
 
-`dt` tidak membawa klien HTTP. Unduhan dilakukan lewat `curl` (diutamakan; sudah ada di Windows 10+ dan macOS) atau
+`dt` tidak membawa klien HTTP. Unduhan dilakukan lewat `curl` (diutamakan) atau
 `wget`. Jika keduanya tidak ada, `dt update` gagal dengan pesan yang jelas (exit 1). `--check --version <tag>` tidak
 memakai jaringan sama sekali sehingga tidak butuh keduanya.
 

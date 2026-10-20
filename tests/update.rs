@@ -33,10 +33,6 @@ fn target() -> Option<(String, &'static str)> {
     };
     let (suffix, ext) = if cfg!(target_os = "linux") {
         ("unknown-linux-musl", "tar.gz")
-    } else if cfg!(target_os = "macos") {
-        ("apple-darwin", "tar.gz")
-    } else if cfg!(target_os = "windows") {
-        ("pc-windows-msvc", "zip")
     } else {
         return None;
     };
@@ -145,7 +141,7 @@ impl Sandbox {
         let scratch = root.path().join("tmp");
         std::fs::create_dir(&dir).unwrap();
         std::fs::create_dir(&scratch).unwrap();
-        let exe = dir.join(if cfg!(windows) { "dt.exe" } else { "dt" });
+        let exe = dir.join("dt");
         std::fs::copy(env!("CARGO_BIN_EXE_dt"), &exe).unwrap();
         Self {
             _root: root,
@@ -473,7 +469,7 @@ fn json_output_is_not_printed_on_failure() {
     assert_eq!(o.out, "", "stdout harus kosong saat gagal");
 }
 
-// ---- update: replacing the binary (unix; Windows needs a zip fixture) ----
+// ---- update: replacing the binary ----
 
 #[cfg(unix)]
 mod replace {

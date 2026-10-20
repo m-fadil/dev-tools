@@ -9,9 +9,6 @@ pub struct Client {
     program: &'static str,
 }
 
-#[cfg(windows)]
-const NULL_DEVICE: &str = "NUL";
-#[cfg(not(windows))]
 const NULL_DEVICE: &str = "/dev/null";
 
 fn failed(message: impl Into<String>) -> CliError {

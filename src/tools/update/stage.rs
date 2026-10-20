@@ -100,26 +100,8 @@ impl Drop for Staged {
     }
 }
 
-#[cfg(unix)]
 fn replace(staged: &Path, target: &Path) -> Result<()> {
     fs::rename(staged, target).map_err(|e| failed(format!("Gagal mengganti {}: {e}", target.display())))
-}
-
-/// A running .exe cannot be overwritten but can be renamed: park it as `.old`, then move the new one in.
-#[cfg(windows)]
-fn replace(staged: &Path, target: &Path) -> Result<()> {
-    let mut old = target.as_os_str().to_owned();
-    old.push(".old");
-    let old = PathBuf::from(old);
-    let _ = fs::remove_file(&old);
-    fs::rename(target, &old).map_err(|e| failed(format!("Gagal mengganti {}: {e}", target.display())))?;
-    if let Err(e) = fs::rename(staged, target) {
-        let _ = fs::rename(&old, target);
-        return Err(failed(format!("Gagal mengganti {}: {e}", target.display())));
-    }
-    // Still locked by this process, so usually fails; the next update removes it.
-    let _ = fs::remove_file(&old);
-    Ok(())
 }
 
 /// Path of the running executable with symlinks resolved.
@@ -129,11 +111,6 @@ pub fn current_exe() -> Result<PathBuf> {
         .map_err(|e| failed(format!("Gagal menentukan lokasi dt ({}): {e}", exe.display())))
 }
 
-/// Display form without the Windows verbatim `\\?\` prefix.
 pub fn display(path: &Path) -> String {
-    let text = path.display().to_string();
-    match text.strip_prefix(r"\\?\") {
-        Some(plain) => plain.to_string(),
-        None => text,
-    }
+    path.display().to_string()
 }

@@ -53,7 +53,7 @@ repo, identitas, dan kredensial pengguna. Test integration menjalankan binary
 dengan environment kosong dan stdin berupa pipe, seperti cron/CI.
 
 CI (`.github/workflows/test.yml`) menjalankan `cargo fmt --check`, `cargo clippy`,
-dan `cargo test` di Linux, macOS, dan Windows untuk setiap push ke `main` dan pull
+dan `cargo test` di Linux untuk setiap push ke `main` dan pull
 request. Job container membangun binary musl untuk AMD64 dan ARM64 (runner native),
 membungkusnya dengan `Dockerfile`, lalu menjalankan bantuan CLI, bantuan syncgit,
 serta pemeriksaan Git, SSH, dan user non-root. CI ini tidak memublikasikan image.
@@ -84,10 +84,10 @@ pada event tag dan menjalankan job berikut:
 1. `verify`: memastikan nama tag sama dengan `v<version di Cargo.toml>`, lalu
    `cargo fmt --check`, `cargo clippy`, dan `cargo test`. Jika gagal, tidak ada
    yang dipublikasikan.
-2. `build`: kompilasi `--release` untuk 8 target (Linux gnu dan musl x64/arm64,
-   macOS x64/arm64, Windows x64/arm64) pada runner native, uji cepat binary
+2. `build`: kompilasi `--release` untuk 4 target (Linux gnu dan musl x64/arm64)
+   pada runner native, uji cepat binary
    (`dt --help`, `dt hash abc`), lalu kemas menjadi
-   `dt-v<versi>-<target>.tar.gz` (Windows: `.zip`) dengan folder
+   `dt-v<versi>-<target>.tar.gz` dengan folder
    `dt-v<versi>-<target>/` berisi `dt` dan `README.md`, plus berkas `.sha256`.
    Penamaan arsip ini dipakai oleh `[package.metadata.binstall]` di `Cargo.toml`;
    ubah keduanya bersamaan.
