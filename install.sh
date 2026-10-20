@@ -3,12 +3,12 @@
 # lalu memasangnya ke ~/.local/bin.
 #
 #   curl -fsSL https://github.com/m-fadil/dev-tools/releases/latest/download/install.sh | sh
-#   curl -fsSL https://github.com/m-fadil/dev-tools/releases/download/v1.1.0/install.sh | sh
+#   curl -fsSL https://github.com/m-fadil/dev-tools/releases/download/vX.Y.Z/install.sh | sh
 #
-# Pilihan versi (yang pertama berlaku): DT_VERSION, argumen (`sh -s -- v1.1.0`),
+# Pilihan versi (yang pertama berlaku): DT_VERSION, argumen (`sh -s -- vX.Y.Z`),
 # versi yang ditanam saat rilis, lalu rilis stabil terbaru.
 #
-#   DT_VERSION      versi yang dipasang, mis. v1.1.0 atau 1.1.0-rc.1
+#   DT_VERSION      versi yang dipasang, mis. vX.Y.Z atau X.Y.Z-rc.1
 #   DT_INSTALL_DIR  folder tujuan (default: $HOME/.local/bin)
 #   DT_RELEASES_URL dasar URL rilis (default: GitHub Releases; untuk pengujian)
 
@@ -73,7 +73,7 @@ resolve_version() {
         version="${location##*/tag/}"
         case "$location" in
             */tag/v*) ;;
-            *) die "tidak ada rilis stabil. Tentukan versi: DT_VERSION=v1.1.0" ;;
+            *) die "tidak ada rilis stabil. Tentukan versi: DT_VERSION=vX.Y.Z" ;;
         esac
     fi
     case "$version" in

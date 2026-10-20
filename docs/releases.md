@@ -1,5 +1,14 @@
 # Catatan rilis
 
+## v1.2.0
+
+Tambahan fitur, tanpa perubahan perilaku tanpa flag baru.
+
+- `dt syncgit`: `-a`/`--all-branches` (branch baru dibuat di titik cabangnya),
+  `--delete-branches`, `-f`/`--force` (bangun ulang branch yang history-nya berubah
+  di sumber; tip lama dicadangkan di `refs/syncgit-backup`), dan `--mirror`.
+  Lihat [syncgit](syncgit.md).
+
 ## v1.1.0
 
 Tambahan fitur, tanpa perubahan perilaku pada tool yang sudah ada.

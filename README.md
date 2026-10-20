@@ -20,17 +20,17 @@ curl -fsSL https://github.com/m-fadil/dev-tools/releases/latest/download/install
 pakai skrip dari rilis itu; versi tersebut menjadi default-nya:
 
 ```bash
-curl -fsSL https://github.com/m-fadil/dev-tools/releases/download/v1.1.0/install.sh | sh
+curl -fsSL https://github.com/m-fadil/dev-tools/releases/download/vX.Y.Z/install.sh | sh
 ```
 
 Pengaturan lewat variabel lingkungan:
 
 | Variabel | Fungsi |
 | --- | --- |
-| `DT_VERSION` | Versi yang dipasang, mis. `v1.1.0` atau `1.1.0-rc.1` (juga untuk prarilis). |
+| `DT_VERSION` | Versi yang dipasang, mis. `vX.Y.Z` atau `X.Y.Z-rc.1` (juga untuk prarilis). |
 | `DT_INSTALL_DIR` | Folder tujuan (default `~/.local/bin`). |
 
-Versi juga bisa diberikan sebagai argumen: `... | sh -s -- v1.1.0`. Jalankan
+Versi juga bisa diberikan sebagai argumen: `... | sh -s -- vX.Y.Z`. Jalankan
 ulang untuk memperbarui. Di Linux yang dipasang adalah build musl (statis).
 Pastikan `~/.local/bin` ada di `PATH`. Di Windows, unduh arsip `.zip` dari
 halaman rilis.

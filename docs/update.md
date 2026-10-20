@@ -18,7 +18,7 @@ dt update [--check] [--version <tag>] [--force] [--json]
 
 1. **Versi tujuan.** Tanpa `--version`, rilis stabil terbaru dicari dari tujuan redirect `<rilis>/latest`
    (`curl -fsSLI -o /dev/null -w '%{url_effective}'`, persis seperti `install.sh`). Prerelease tidak pernah dipilih
-   otomatis; pasang lewat `--version v1.2.0-rc.1`.
+   otomatis; pasang lewat `--version vX.Y.Z-rc.1`.
 2. **Perbandingan.** Versi dibandingkan dengan aturan SemVer (`dt semver`). Tanpa `--version`, pembaruan hanya dipasang
    jika versi terbaru lebih tinggi dari versi saat ini. Dengan `--version`, versi yang berbeda selalu dipasang (juga
    versi yang lebih lama); versi yang sama dilewati kecuali ada `--force`.
@@ -62,29 +62,29 @@ Contoh berikut memakai cermin lokal (`DT_RELEASES_URL=http://127.0.0.1:8765`) de
 
 ```
 $ dt update --check
-Versi saat ini : 1.1.0
+Versi saat ini : X.Y.Z
 Versi terbaru  : 9.9.9
 Pembaruan tersedia. Jalankan: dt update
 
 $ dt update --check --version v1.0.0
-Versi saat ini : 1.1.0
+Versi saat ini : X.Y.Z
 Versi terbaru  : 1.0.0
 dt sudah versi terbaru.
 
 $ dt update
-Memperbarui dt 1.1.0 -> 9.9.9 (x86_64-unknown-linux-musl)
+Memperbarui dt X.Y.Z -> 9.9.9 (x86_64-unknown-linux-musl)
 Berhasil diperbarui ke v9.9.9
 Terpasang: /tmp/smoke/bin/dt
 
-$ dt update --version 1.1.0
-dt sudah versi terbaru (1.1.0).
+$ dt update --version X.Y.Z
+dt sudah versi terbaru (X.Y.Z).
 ```
 
 Checksum tidak cocok (exit 1, binary tidak berubah):
 
 ```
 $ dt update --version v9.9.9
-Memperbarui dt 1.1.0 -> 9.9.9 (x86_64-unknown-linux-musl)
+Memperbarui dt X.Y.Z -> 9.9.9 (x86_64-unknown-linux-musl)
 Checksum tidak cocok untuk dt-v9.9.9-x86_64-unknown-linux-musl.tar.gz.
 ```
 
@@ -92,7 +92,7 @@ Folder tujuan tidak bisa ditulis (exit 1; gagal sebelum mengunduh):
 
 ```
 $ dt update --version v9.9.9
-Memperbarui dt 1.1.0 -> 9.9.9 (x86_64-unknown-linux-musl)
+Memperbarui dt X.Y.Z -> 9.9.9 (x86_64-unknown-linux-musl)
 Tidak bisa menulis ke /tmp/smoke/bin: Permission denied (os error 13). Jalankan ulang dengan izin yang sesuai atau pasang ulang dengan install.sh.
 ```
 
@@ -100,7 +100,7 @@ Tidak bisa menulis ke /tmp/smoke/bin: Permission denied (os error 13). Jalankan 
 
 ```json
 {
-  "current": "1.1.0",
+  "current": "X.Y.Z",
   "latest": "9.9.9",
   "available": true,
   "updated": true,

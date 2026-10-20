@@ -40,7 +40,7 @@ Butuh curl atau wget. DT_RELEASES_URL mengganti dasar URL rilis
 Rilis prerelease hanya bisa dipasang lewat --version. Binary hasil cargo install
 akan diganti dengan build rilis (musl di Linux).
 Exit: 0 sukses (termasuk --check dan sudah terbaru), 1 gagal, 2 penggunaan salah.
-Contoh: dt update --check   |   dt update --version v1.1.0
+Contoh: dt update --check   |   dt update --version vX.Y.Z
 ";
 
 const DEFAULT_RELEASES: &str = "https://github.com/m-fadil/dev-tools/releases";
@@ -90,7 +90,7 @@ fn tag_from_location(location: &str) -> Option<&str> {
 }
 
 fn resolve_latest(client: &Client, releases: &str) -> Result<String> {
-    let none = || CliError::Failed("Tidak ada rilis stabil. Tentukan versi: dt update --version v1.1.0".into());
+    let none = || CliError::Failed("Tidak ada rilis stabil. Tentukan versi: dt update --version vX.Y.Z".into());
     // GitHub answers 404 for /releases/latest while a repository has no stable release;
     // every other failure (DNS, refused, TLS, 5xx) is reported with its own cause.
     let location = match client.redirect_target(&format!("{releases}/latest")) {
