@@ -1,5 +1,13 @@
 # Catatan rilis
 
+## v1.4.0
+
+- `dt syncgit`: `--map [sumber:]tujuan` (boleh diulang) mengirim branch ke nama branch
+  tujuan yang berbeda; branch lokal, ref sumber, dan tag tetap memakai nama sumber.
+  `--map :tujuan` memakai satu-satunya branch yang dipilih. Pemetaan juga dipakai oleh
+  `-a` saat memakai branch tujuan yang sudah ada dan oleh `--delete-branches` saat
+  menghapus branch tujuan.
+
 ## v1.3.0
 
 - Rilis hanya untuk Linux (musl, x86_64 dan aarch64). Aset macOS dan Windows tidak lagi
