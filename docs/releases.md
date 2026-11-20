@@ -2,11 +2,29 @@
 
 ## v1.4.0
 
-- `dt syncgit`: `--map [sumber:]tujuan` (boleh diulang) mengirim branch ke nama branch
-  tujuan yang berbeda; branch lokal, ref sumber, dan tag tetap memakai nama sumber.
-  `--map :tujuan` memakai satu-satunya branch yang dipilih. Pemetaan juga dipakai oleh
-  `-a` saat memakai branch tujuan yang sudah ada dan oleh `--delete-branches` saat
-  menghapus branch tujuan.
+Tambahan fitur, tanpa perubahan perilaku pada penggunaan tanpa `--map`.
+
+### Pemetaan nama branch tujuan
+
+- `dt syncgit`: `--map [sumber:]tujuan` (boleh diulang) mengirim branch sumber ke nama
+  branch tujuan yang berbeda. Branch lokal, ref sumber, dan tag tetap memakai nama
+  sumber; hanya ref di remote tujuan yang diganti namanya saat push.
+- `--map :tujuan` memakai satu-satunya branch yang dipilih, baik dari argumen branch
+  maupun branch default remote sumber.
+- Pemetaan berlaku pada push branch, force push dengan lease, adopsi branch tujuan oleh
+  `--all-branches`, dan penghapusan branch tujuan oleh `--delete-branches`.
+- Kombinasi yang tidak konsisten ditolak sebagai kesalahan penggunaan: sumber kosong
+  dengan `--all-branches`/`--mirror` atau beberapa branch, satu sumber dipetakan lebih
+  dari sekali, dan dua branch memakai nama tujuan yang sama.
+
+### Penanganan kasus tepi
+
+- `--delete-branches` tetap menghapus branch lokal yang namanya bertabrakan dengan
+  tujuan branch yang dipetakan, tanpa menghapus ref tujuan yang dipakai branch
+  tersinkron.
+- Beberapa branch yang hilang di sumber dan memetakan ke satu nama tujuan hanya
+  menghapus ref tujuan tersebut satu kali, sehingga tidak menghasilkan kegagalan push
+  palsu.
 
 ## v1.3.0
 
