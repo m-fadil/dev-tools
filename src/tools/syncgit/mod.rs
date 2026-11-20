@@ -27,6 +27,8 @@ Tanpa opsi: wizard Inquirer. Dengan opsi: langsung berjalan, cocok untuk CI.
   --source <remote>       Remote sumber (default: github)
   --destination <remote>  Remote push (default: PUSH_REMOTE atau origin)
   --mailmap <path>        Mailmap, relatif ke repo (default: mailmap.txt)
+      --map [sumber:]tujuan  Push branch sumber ke nama tujuan (boleh diulang);
+                         sumber kosong = satu-satunya branch yang dipilih
   -n, --dry-run           Preview; fetch tetap dilakukan, tidak commit/tag/push
   -p, --push              Push branch dan tag setelah sinkronisasi lokal
   -d, --delete-tags       Hapus SEMUA tag lokal yang tidak ada di sumber;
@@ -57,6 +59,8 @@ struct Args {
     destination: Option<String>,
     #[arg(long)]
     mailmap: Option<String>,
+    #[arg(long = "map", value_name = "[SUMBER:]TUJUAN")]
+    maps: Vec<String>,
     #[arg(short = 'n', long = "dry-run")]
     dry_run: bool,
     #[arg(short = 'p', long)]
@@ -81,6 +85,24 @@ struct Parsed {
     options: SyncGitOptions,
 }
 
+/// Parses `--map [sumber:]tujuan` values; branch names cannot contain `:`.
+fn parse_maps(values: &[String]) -> Result<Vec<(String, String)>> {
+    let mut maps: Vec<(String, String)> = Vec::new();
+    for value in values {
+        let Some((source, destination)) = value.split_once(':') else {
+            return Err(usage(format!("--map harus berformat [sumber:]tujuan: {value}")));
+        };
+        if destination.is_empty() || destination.contains(':') {
+            return Err(usage(format!("--map tidak valid: {value}")));
+        }
+        if maps.iter().any(|(existing, _)| existing == source) {
+            return Err(usage(format!("Branch sumber dipetakan lebih dari sekali: {source}")));
+        }
+        maps.push((source.to_string(), destination.to_string()));
+    }
+    Ok(maps)
+}
+
 /// Pure parsing seam: resolves defaults without touching Git, prompts, or the terminal.
 fn parse_syncgit_args(args: Vec<OsString>, cwd: &Path, push_remote: Option<&str>) -> Result<Parsed> {
     let empty = args.is_empty();
@@ -98,6 +120,17 @@ fn parse_syncgit_args(args: Vec<OsString>, cwd: &Path, push_remote: Option<&str>
             "--all-branches/--mirror tidak dapat digabung dengan nama branch.",
         ));
     }
+    let maps = parse_maps(&parsed.maps)?;
+    if maps.iter().any(|(source, _)| source.is_empty()) {
+        if all_branches {
+            return Err(usage(
+                "--map :tujuan tidak dapat digabung dengan --all-branches/--mirror.",
+            ));
+        }
+        if branches.len() > 1 {
+            return Err(usage("--map :tujuan membutuhkan tepat satu branch."));
+        }
+    }
     Ok(Parsed {
         interactive: empty || parsed.interactive,
         options: SyncGitOptions {
@@ -110,6 +143,7 @@ fn parse_syncgit_args(args: Vec<OsString>, cwd: &Path, push_remote: Option<&str>
             mailmap: parsed.mailmap.unwrap_or_else(|| "mailmap.txt".to_string()),
             // Empty means the source remote's default branch, resolved by sync_git.
             branches,
+            maps,
             dry_run: parsed.dry_run,
             push: parsed.push,
             delete_tags: parsed.delete_tags || parsed.mirror,
@@ -244,6 +278,27 @@ fn wizard(initial: SyncGitOptions) -> Result<Option<SyncGitOptions>> {
             })
             .prompt()?
     };
+    let default_maps = initial
+        .maps
+        .iter()
+        .map(|(source, destination)| format!("{source}:{destination}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let maps_answer = Text::new("Pemetaan branch sumber:tujuan (pisahkan spasi, kosongkan bila sama)")
+        .with_default(&default_maps)
+        .with_validator(|value: &str| {
+            let values: Vec<String> = value.split_whitespace().map(String::from).collect();
+            Ok(match parse_maps(&values) {
+                Ok(_) => Validation::Valid,
+                Err(error) => invalid(&error.to_string()),
+            })
+        })
+        .prompt()?;
+    let map_values: Vec<String> = maps_answer.split_whitespace().map(String::from).collect();
+    let maps = parse_maps(&map_values)?;
+    if maps.iter().any(|(source, _)| source.is_empty()) && (all_branches || branches.len() != 1) {
+        return Err(usage("--map :tujuan membutuhkan tepat satu branch."));
+    }
     let mode_labels = vec![
         "Preview / dry-run (Recommended)".to_string(),
         "Sinkron lokal saja".to_string(),
@@ -269,8 +324,16 @@ fn wizard(initial: SyncGitOptions) -> Result<Option<SyncGitOptions>> {
     let force = Confirm::new("Bangun ulang branch dari sumber bila history-nya di-rewrite (--force)?")
         .with_default(initial.force)
         .prompt()?;
+    let mapped = if maps.is_empty() {
+        "tidak ada".to_string()
+    } else {
+        maps.iter()
+            .map(|(source, destination)| format!("{source}->{destination}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
     println!(
-        "\n{source} -> lokal{}\nRepo: {repo}\nBranch: {}\nMailmap: {mailmap}\nHapus tag: {}, hapus branch: {}, force: {}\n",
+        "\n{source} -> lokal{}\nRepo: {repo}\nBranch: {}\nPemetaan: {mapped}\nMailmap: {mailmap}\nHapus tag: {}, hapus branch: {}, force: {}\n",
         if mode == 2 {
             format!(" -> {destination}")
         } else {
@@ -295,6 +358,7 @@ fn wizard(initial: SyncGitOptions) -> Result<Option<SyncGitOptions>> {
         destination,
         mailmap,
         branches,
+        maps,
         dry_run: mode == 0,
         push: mode == 2,
         delete_tags,
@@ -355,6 +419,7 @@ mod tests {
                 destination: "origin".into(),
                 mailmap: "mailmap.txt".into(),
                 branches: vec![],
+                maps: vec![],
                 dry_run: true,
                 push: false,
                 delete_tags: false,
@@ -396,6 +461,30 @@ mod tests {
     fn positional_branches_keep_order_and_drop_duplicates() {
         assert_eq!(opts(&["main", "release", "main"]).branches, ["main", "release"]);
         assert_eq!(opts(&["-n", "--", "-odd"]).branches, ["-odd"]);
+    }
+
+    #[test]
+    fn map_parses_source_destination_pairs_and_rejects_invalid_values() {
+        assert_eq!(
+            opts(&["--map", "main:master", "--map=develop:dev"]).maps,
+            [("main".into(), "master".into()), ("develop".into(), "dev".into())]
+        );
+        assert_eq!(opts(&["--map", ":master"]).maps, [("".into(), "master".into())]);
+        for bad in ["main", "main:", ":", "a:b:c"] {
+            assert!(matches!(parse(&["--map", bad], None), Err(CliError::Usage(_))), "{bad}");
+        }
+        assert!(matches!(
+            parse(&["--map", "main:master", "--map", "main:dev"], None),
+            Err(CliError::Usage(_))
+        ));
+    }
+
+    #[test]
+    fn an_implicit_map_source_requires_exactly_one_branch() {
+        assert!(parse(&["--map", ":master", "main", "develop"], None).is_err());
+        assert!(parse(&["-a", "--map", ":master"], None).is_err());
+        assert!(parse(&["--map", ":master", "main"], None).is_ok());
+        assert!(parse(&["--map", ":master"], None).is_ok());
     }
 
     #[test]

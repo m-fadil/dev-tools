@@ -51,6 +51,7 @@ struct Sync {
     all: bool,
     delete_branches: bool,
     force: bool,
+    maps: Vec<(&'static str, &'static str)>,
 }
 
 impl Fixture {
@@ -120,6 +121,11 @@ impl Fixture {
     fn run(&self, opts: &Sync) -> Out {
         let work = self.work.to_string_lossy().into_owned();
         let mailmap = self.mailmap.to_string_lossy().into_owned();
+        let maps: Vec<String> = opts
+            .maps
+            .iter()
+            .map(|(source, destination)| format!("{source}:{destination}"))
+            .collect();
         let mut args = vec![
             "syncgit",
             "--repo",
@@ -131,6 +137,10 @@ impl Fixture {
             "--mailmap",
             &mailmap,
         ];
+        for map in &maps {
+            args.push("--map");
+            args.push(map.as_str());
+        }
         if opts.dry_run {
             args.push("-n");
         }
@@ -418,6 +428,80 @@ fn pushes_destination_branch_and_tags_and_force_updates_a_moved_source_tag() {
 }
 
 #[test]
+fn pushes_a_mapped_destination_branch_and_force_updates_the_mapped_ref() {
+    let f = fixture();
+    f.commit("one", "1\n", D2, D2);
+    f.sync(&Sync {
+        push: true,
+        maps: vec![("develop", "master")],
+        ..Sync::default()
+    });
+    assert_eq!(
+        f.git(&f.destination, &["rev-parse", "master"]),
+        f.git(&f.work, &["rev-parse", "develop"])
+    );
+    assert_eq!(
+        f.git(&f.destination, &["branch", "--format=%(refname:short)"]),
+        "master"
+    );
+    assert_eq!(f.git(&f.work, &["branch", "--format=%(refname:short)"]), "develop");
+
+    f.git(&f.source, &["reset", "-q", "--hard", "HEAD~1"]);
+    f.commit("rewritten", "9\n", D3, D3);
+    f.sync(&Sync {
+        push: true,
+        force: true,
+        maps: vec![("develop", "master")],
+        ..Sync::default()
+    });
+    assert_eq!(
+        f.git(&f.destination, &["rev-parse", "master"]),
+        f.git(&f.work, &["rev-parse", "develop"])
+    );
+    assert_eq!(
+        f.git(&f.destination, &["log", "--format=%s", "master"]),
+        "rewritten\ninitial"
+    );
+}
+
+#[test]
+fn maps_the_single_selected_branch_when_the_source_side_is_omitted() {
+    let f = fixture();
+    f.commit("one", "1\n", D2, D2);
+    f.sync(&Sync {
+        push: true,
+        maps: vec![("", "master")],
+        ..Sync::default()
+    });
+    assert_eq!(
+        f.git(&f.destination, &["rev-parse", "master"]),
+        f.git(&f.work, &["rev-parse", "develop"])
+    );
+    assert_eq!(
+        f.git(&f.destination, &["branch", "--format=%(refname:short)"]),
+        "master"
+    );
+}
+
+#[test]
+fn an_implicit_map_does_not_rename_stale_deletion_targets() {
+    let f = fixture();
+    f.git(&f.work, &["branch", "stale"]);
+    f.git(&f.work, &["push", "-q", "origin", "stale"]);
+    f.sync(&Sync {
+        push: true,
+        delete_branches: true,
+        maps: vec![("", "master")],
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["branch", "--format=%(refname:short)"]), "develop");
+    assert_eq!(
+        f.git(&f.destination, &["branch", "--format=%(refname:short)"]),
+        "master"
+    );
+}
+
+#[test]
 fn preserves_absent_source_tags_by_default_and_deletes_local_and_remote_tags_only_on_opt_in() {
     let f = fixture();
     f.git(&f.work, &["tag", "manual"]);
@@ -673,6 +757,43 @@ fn all_branches_starts_a_missing_local_branch_from_the_destination_and_syncs_onl
 }
 
 #[test]
+fn all_branches_adopts_a_mapped_destination_branch_and_syncs_only_the_delta() {
+    let f = fixture();
+    f.git(&f.source, &["switch", "-q", "-c", "feature"]);
+    f.commit("f1", "1\n", D2, D2);
+    f.sync(&Sync {
+        all: true,
+        push: true,
+        maps: vec![("feature", "master")],
+        ..Sync::default()
+    });
+    let pushed = f.git(&f.destination, &["rev-parse", "master"]);
+    f.git(&f.work, &["branch", "-q", "-D", "feature"]);
+    f.git(&f.work, &["fetch", "-q", "origin"]);
+    f.commit("f2", "2\n", D3, D3);
+    let r = f.run(&Sync {
+        all: true,
+        dry_run: true,
+        maps: vec![("feature", "master")],
+        ..Sync::default()
+    });
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.contains("memakai origin/master"), "{}", r.out);
+    assert!(!r.out.contains("branch baru"), "{}", r.out);
+    f.sync(&Sync {
+        all: true,
+        push: true,
+        maps: vec![("feature", "master")],
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["rev-parse", "feature~1"]), pushed);
+    assert_eq!(
+        f.git(&f.destination, &["rev-parse", "master"]),
+        f.git(&f.work, &["rev-parse", "feature"])
+    );
+}
+
+#[test]
 fn all_branches_ignores_an_unrelated_destination_branch_and_forks_from_the_source_history() {
     let f = fixture();
     f.git(&f.source, &["switch", "-q", "-c", "feature"]);
@@ -747,6 +868,41 @@ fn delete_branches_removes_stale_local_and_destination_branches_but_keeps_a_back
     assert!(
         f.git(&f.work, &["for-each-ref", "refs/syncgit-backup"])
             .ends_with("/stale")
+    );
+}
+
+#[test]
+fn delete_branches_removes_a_stale_branch_that_matches_an_unpushed_mapping_target() {
+    let f = fixture();
+    f.git(&f.work, &["branch", "master"]);
+    f.sync(&Sync {
+        delete_branches: true,
+        maps: vec![("develop", "master")],
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["branch", "--format=%(refname:short)"]), "develop");
+    assert!(
+        f.git(&f.work, &["for-each-ref", "refs/syncgit-backup"])
+            .ends_with("/master")
+    );
+}
+
+#[test]
+fn delete_branches_deletes_a_shared_mapping_target_once() {
+    let f = fixture();
+    f.git(&f.work, &["branch", "a"]);
+    f.git(&f.work, &["branch", "x"]);
+    f.git(&f.work, &["push", "-q", "origin", "x"]);
+    f.sync(&Sync {
+        push: true,
+        delete_branches: true,
+        maps: vec![("a", "x")],
+        ..Sync::default()
+    });
+    assert_eq!(f.git(&f.work, &["branch", "--format=%(refname:short)"]), "develop");
+    assert_eq!(
+        f.git(&f.destination, &["branch", "--format=%(refname:short)"]),
+        "develop"
     );
 }
 

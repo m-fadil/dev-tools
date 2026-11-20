@@ -12,6 +12,8 @@ Tanpa opsi: wizard Inquirer. Dengan opsi: langsung berjalan, cocok untuk CI.
   --source <remote>       Remote sumber (default: github)
   --destination <remote>  Remote push (default: PUSH_REMOTE atau origin)
   --mailmap <path>        Mailmap, relatif ke repo (default: mailmap.txt)
+      --map [sumber:]tujuan  Push branch sumber ke nama tujuan (boleh diulang);
+                         sumber kosong = satu-satunya branch yang dipilih
   -n, --dry-run           Preview; fetch tetap dilakukan, tidak commit/tag/push
   -p, --push              Push branch dan tag setelah sinkronisasi lokal
   -d, --delete-tags       Hapus SEMUA tag lokal yang tidak ada di sumber;
@@ -219,6 +221,48 @@ fn dry_run_from_a_different_cwd_uses_the_repo_mailmap_and_leaves_refs_untouched(
         "main",
     ]);
     assert_eq!(same.code, 0, "{}", same.err);
+}
+
+#[test]
+fn an_implicit_map_uses_the_source_default_branch() {
+    let c = setup();
+    let (source, work) = make_pair(&c, "main", "source", "work");
+    std::fs::write(work.join("mailmap.txt"), "").unwrap();
+    std::fs::write(source.join("f.txt"), "1\n").unwrap();
+    c.git(&source, &["commit", "-qam", "feature"]);
+    let r = c.cli(&[
+        "syncgit",
+        "--repo",
+        str_of(&work),
+        "--destination",
+        "gitlab",
+        "--map",
+        ":master",
+        "-n",
+    ]);
+    assert_eq!(r.code, 0, "{}", r.err);
+    assert!(r.out.contains("tujuan: gitlab/master"), "{}", r.out);
+}
+
+#[test]
+fn an_explicit_map_source_must_exist_in_the_source_remote() {
+    let c = setup();
+    let (_source, work) = make_pair(&c, "main", "source", "work");
+    std::fs::write(work.join("mailmap.txt"), "").unwrap();
+    c.git(&work, &["branch", "other"]);
+    let r = c.cli(&[
+        "syncgit",
+        "--repo",
+        str_of(&work),
+        "--destination",
+        "gitlab",
+        "--map",
+        "other:master",
+        "-n",
+        "other",
+    ]);
+    assert_eq!(r.code, 1, "{}", r.out);
+    assert!(r.err.contains("--map: branch other tidak ada di github"), "{}", r.err);
 }
 
 #[test]

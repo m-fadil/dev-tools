@@ -14,7 +14,8 @@ dt
 dt syncgit
 ```
 
-Wizard meminta repo, remote sumber/tujuan, mailmap, dan branch lokal. Mode default
+Wizard meminta repo, remote sumber/tujuan, mailmap, branch lokal, dan pemetaan
+branch sumber:tujuan. Mode default
 **preview**. Sinkron lokal/push membutuhkan konfirmasi akhir. Penghapusan tag
 default **tidak**. Ctrl+C membatalkan prompt (exit 130). Wizard membutuhkan TTY.
 Hanya branch lokal yang bisa dipilih; branch dari argumen yang tidak ada secara lokal
@@ -46,6 +47,12 @@ dt syncgit --repo /path/to/repo -p
 dt syncgit --repo /path/to/work --source upstream --destination origin \
   --mailmap identities.txt -n main
 
+# Nama branch tujuan berbeda: main -> master
+dt syncgit --repo /path/to/repo --map main:master -p
+
+# Satu-satunya branch yang dipilih (default atau positional) -> master
+dt syncgit --repo /path/to/repo --map :master -p
+
 # Semua branch sumber (branch baru dibuat lokal), lalu push
 dt syncgit --repo /path/to/repo -a -p
 
@@ -67,6 +74,7 @@ dt syncgit --help
 | `--source <remote>`      | Remote sumber; default `github`.                                                             |
 | `--destination <remote>` | Remote push; default `$PUSH_REMOTE` (bila tidak kosong) atau `origin`.                       |
 | `--mailmap <path>`       | Relatif ke repo atau absolut; default `mailmap.txt`.                                         |
+| `--map [sumber:]tujuan`  | Push branch sumber ke nama branch tujuan; boleh diulang. Sumber kosong = satu-satunya branch yang dipilih. Branch lokal tetap bernama sumber. |
 | `-n`, `--dry-run`        | Preview tanpa commit/tag lokal atau push; fetch tetap dilakukan.                             |
 | `-p`, `--push`           | Push branch dan tag setelah sinkronisasi lokal.                                              |
 | `-d`, `--delete-tags`    | Hapus semua tag lokal yang tidak ada di sumber; dengan push, hapus nama yang sama di tujuan. |
@@ -136,6 +144,17 @@ dikirim ke remote tujuan memakai identitas terpetakan; sumber tidak di-push.
   gagal, tag tidak di-push; tag yang ditolak tidak menghentikan push tag lainnya, dan
   semua kegagalan dilaporkan bersama di akhir (exit 1). Proteksi ref provider tetap berlaku.
 - Sumber dan tujuan harus berbeda bila `--push` dipakai; tanpa push, tujuan tidak dipakai.
+- `--map [sumber:]tujuan` hanya mengganti nama ref di remote tujuan saat push; branch lokal,
+  ref sumber, dan tag tetap memakai nama sumber. Boleh diulang, mis.
+  `--map main:master --map develop:dev -a`. Sumber kosong (`--map :master`) memakai satu-satunya
+  branch yang dipilih; bentuk ini tidak valid dengan `--all-branches`/`--mirror` atau beberapa
+  nama branch. Sumber eksplisit harus termasuk branch yang disinkronkan (dipilih atau lewat
+  `-a`) dan ada di remote sumber. Pengecualian: dengan
+  `--delete-branches`, sumber yang sudah hilang di remote boleh dipakai bila branch lokalnya
+  masih ada untuk dihapus. Nama tujuan antar-branch tidak boleh bentrok. Dengan
+  `--all-branches`, branch yang tidak dipetakan tetap memakai namanya sendiri. Mapping juga
+  dipakai saat `-a` memakai branch tujuan yang sudah ada dan saat `--delete-branches`
+  menghapus branch tujuan.
 - Penghapusan tag mencakup **semua** tag lokal yang tidak ada di sumber, termasuk
   tag manual. Dengan push, nama tersebut juga dihapus di tujuan menggunakan lease.
   Tag yang hanya ada di tujuan (tidak ada lokal) tidak dihapus.
@@ -173,7 +192,8 @@ Integration test memakai repo sementara tanpa jaringan. Mencakup pemetaan
 identitas/tanggal/pesan/tree, hash rewrite, commit kosong, pemulihan branch/detached
 HEAD, dry-run, tag anotasi/ringan/ambigu, retag dan push, opt-in deletion, penolakan
 tag remote berbeda tanpa menghentikan push lain, dirty working tree, semua branch baru
-(termasuk push), penghapusan branch dengan cadangan, serta `--force` (bersama dan dari root).
+(termasuk push), pemetaan branch tujuan dan force push-nya, penghapusan branch dengan
+cadangan, serta `--force` (bersama dan dari root).
 
 ```bash
 cargo test --test syncgit

@@ -13,6 +13,8 @@ pub struct SyncGitOptions {
     pub mailmap: String,
     /// Empty: the source remote's default branch (see `source_default_branch`).
     pub branches: Vec<String>,
+    /// Source branch -> destination branch for push; unlisted branches keep their name.
+    pub maps: Vec<(String, String)>,
     pub dry_run: bool,
     pub push: bool,
     pub delete_tags: bool,
@@ -22,6 +24,15 @@ pub struct SyncGitOptions {
     pub delete_branches: bool,
     /// Rebuild a branch from the source when its history was rewritten there.
     pub force: bool,
+}
+
+impl SyncGitOptions {
+    fn destination_branch<'a>(&'a self, branch: &'a str) -> &'a str {
+        self.maps
+            .iter()
+            .find(|(source, _)| source.is_empty() || source.as_str() == branch)
+            .map_or(branch, |(_, destination)| destination.as_str())
+    }
 }
 
 #[derive(Clone)]
@@ -918,12 +929,20 @@ fn adoptable(git: &Git, options: &SyncGitOptions, branch: &str) -> Result<Option
     if !options.all_branches || options.destination == options.source {
         return Ok(None);
     }
-    let reference = format!("refs/remotes/{}/{branch}", options.destination);
+    let reference = format!(
+        "refs/remotes/{}/{}",
+        options.destination,
+        options.destination_branch(branch)
+    );
     Ok(git.exists(&reference)?.then_some(reference))
 }
 
 fn sync_branch(git: &Git, options: &SyncGitOptions, branch: &str, progress: &mut Progress) -> Result<()> {
     println!("== {branch}");
+    let destination = options.destination_branch(branch);
+    if destination != branch {
+        println!("   tujuan: {}/{}", options.destination, destination);
+    }
     let local_ref = format!("refs/heads/{branch}");
     let source_ref = format!("refs/remotes/{}/{branch}", options.source);
     let mut has_local = git.exists(&local_ref)?;
@@ -1024,6 +1043,12 @@ fn delete_stale_branches(
         return Ok(());
     }
     let heads = git.run(&args!["for-each-ref", "--format=%(refname:strip=2)", "refs/heads"])?;
+    // Deleting a stale branch must not remove the destination ref of a branch that is still synced.
+    let active: HashSet<String> = progress
+        .synced_branches
+        .iter()
+        .map(|branch| options.destination_branch(branch).to_string())
+        .collect();
     // A branch checked out in any worktree (the main one included) cannot be deleted.
     let worktrees = git.run(&args!["worktree", "list", "--porcelain"])?;
     let checked_out: HashSet<&str> = worktrees
@@ -1038,16 +1063,26 @@ fn delete_stale_branches(
             ));
             continue;
         }
+        let destination = options.destination_branch(name);
+        // The destination ref of a synced branch must survive, but the stale local branch is still removed.
+        let protected = options.push && active.contains(destination);
         warning(&format!(
-            "   {name}: tidak ada di {}; {}",
+            "   {name}: tidak ada di {}; {}{}",
             options.source,
-            if options.dry_run { "akan dihapus" } else { "dihapus" }
+            if options.dry_run { "akan dihapus" } else { "dihapus" },
+            if protected {
+                format!(" (ref tujuan {destination} dipakai branch yang disinkronkan, tidak dihapus)")
+            } else {
+                String::new()
+            }
         ));
         if !options.dry_run {
             let tip = git.rev(&format!("refs/heads/{name}"))?;
             backup(git, name, &tip)?;
             git.run(&args!["branch", "-D", "--", name])?;
-            progress.deleted_branches.push(name.to_string());
+            if !protected {
+                progress.deleted_branches.push(name.to_string());
+            }
         }
     }
     Ok(())
@@ -1104,6 +1139,40 @@ fn sync_body(
     } else {
         branches.to_vec()
     };
+    for (source, _) in &options.maps {
+        if source.is_empty() && branches.len() != 1 {
+            return fail("--map :tujuan membutuhkan tepat satu branch");
+        }
+    }
+    let mut destinations: HashSet<&str> = HashSet::new();
+    for branch in &branches {
+        let destination = options.destination_branch(branch);
+        if !destinations.insert(destination) {
+            return fail(format!(
+                "Dua branch sumber memakai nama tujuan yang sama: {destination}"
+            ));
+        }
+    }
+    let mut sources: HashSet<&str> = HashSet::new();
+    for (source, _) in &options.maps {
+        let source = if source.is_empty() {
+            branches[0].as_str()
+        } else {
+            source.as_str()
+        };
+        if !sources.insert(source) {
+            return fail(format!("Branch sumber dipetakan lebih dari sekali: {source}"));
+        }
+        let active = branches.iter().any(|branch| branch == source);
+        let source_exists = git.exists(&format!("refs/remotes/{}/{source}", options.source))?;
+        if source_exists {
+            if !active {
+                return fail(format!("--map {source}: branch {source} tidak disinkronkan"));
+            }
+        } else if !(options.delete_branches && git.exists(&format!("refs/heads/{source}"))?) {
+            return fail(format!("--map: branch {source} tidak ada di {}", options.source));
+        }
+    }
     for branch in &branches {
         sync_branch(git, options, branch, progress)?;
     }
@@ -1339,11 +1408,30 @@ pub fn sync_git(options: &SyncGitOptions) -> Result<()> {
     if !options.all_branches && options.branches.is_empty() {
         println!(">> branch default {}: {}", options.source, branches[0]);
     }
+    // Resolve an implicit `--map :tujuan` to the single selected branch, so stale branches keep their own name.
+    let mut resolved = options.clone();
+    if branches.len() == 1 {
+        for (source, _) in &mut resolved.maps {
+            if source.is_empty() {
+                *source = branches[0].clone();
+            }
+        }
+    }
+    let options = &resolved;
     for branch in &branches {
         if branch.starts_with('-') {
             return fail(format!("Nama branch tidak valid: {branch}"));
         }
         git.run(&args!["check-ref-format", format!("refs/heads/{branch}")])?;
+    }
+    for (source, destination) in &options.maps {
+        if source.starts_with('-') || destination.starts_with('-') {
+            return fail(format!("Nama branch map tidak valid: {source}:{destination}"));
+        }
+        if !source.is_empty() {
+            git.run(&args!["check-ref-format", format!("refs/heads/{source}")])?;
+        }
+        git.run(&args!["check-ref-format", format!("refs/heads/{destination}")])?;
     }
     if !git
         .run(&args!["status", "--porcelain=v1", "--untracked-files=no"])?
@@ -1417,12 +1505,17 @@ pub fn sync_git(options: &SyncGitOptions) -> Result<()> {
         let mut branches_pushed = true;
         if !normal.is_empty() {
             let mut a = args!["--", &options.destination].to_vec();
-            a.extend(normal.iter().map(|b| format!("refs/heads/{b}:refs/heads/{b}")));
+            a.extend(
+                normal
+                    .iter()
+                    .map(|b| format!("refs/heads/{b}:refs/heads/{}", options.destination_branch(b))),
+            );
             branches_pushed = push(&git, &mut failures, a)?;
         }
         // A rebuilt branch is not a fast-forward; the lease pins it to the destination value read at the start.
         for name in &progress.forced_branches {
-            let reference = format!("refs/heads/{name}");
+            let local = format!("refs/heads/{name}");
+            let reference = format!("refs/heads/{}", options.destination_branch(name));
             let previous = observed.get(&reference).map(String::as_str).unwrap_or("");
             branches_pushed &= push(
                 &git,
@@ -1431,7 +1524,7 @@ pub fn sync_git(options: &SyncGitOptions) -> Result<()> {
                     format!("--force-with-lease={reference}:{previous}"),
                     "--",
                     &options.destination,
-                    format!("{reference}:{reference}")
+                    format!("{local}:{reference}")
                 ],
             )?;
         }
@@ -1441,8 +1534,13 @@ pub fn sync_git(options: &SyncGitOptions) -> Result<()> {
                 failures.push("push tag dilewati karena push branch gagal".to_string());
             }
         } else {
+            // Two stale branches may map to the same destination ref; delete it once.
+            let mut deleted: HashSet<String> = HashSet::new();
             for name in &progress.deleted_branches {
-                let reference = format!("refs/heads/{name}");
+                let reference = format!("refs/heads/{}", options.destination_branch(name));
+                if !deleted.insert(reference.clone()) {
+                    continue;
+                }
                 if let Some(previous) = observed.get(&reference) {
                     push(
                         &git,
